@@ -1,105 +1,101 @@
-Product Roadmap
-Project Vision
+# Product Roadmap
+
+## Project Vision
+
 Build an AI-native GTM Operating System that transforms enterprise sales expertise into practical AI workflows and agents.
 
-Success Metrics
-Sprint Success
-A working feature is shipped every week.
-Every feature solves a real GTM problem.
-Every feature can be demonstrated.
-Project Success
-By the end of the project I should be able to:
-Build AI-powered GTM tools independently.
-Understand the architecture behind modern AI products.
-Speak confidently with AI engineers and product teams.
-Demonstrate real AI applications during interviews.
-Use my own software in day-to-day enterprise sales.
+## Product Direction
 
-Product Roadmap
-Phase 1
-AI Foundations Through Building
-Goal:
-Learn AI by building practical software.
-Product:
-GTM Brain
-Initial Use Case:
-Vercel Enterprise Sales
-Status:
-🟢 Active
+Founding AE OS is an AI-native platform for Enterprise Account Executives.
 
+The first product experience is GTM Brain: an AI-native Pipeline Generation Brain.
 
-Phase 2
-Buying Signal Engine
-Goal:
-Automatically identify buying signals across target accounts.
-Deliverable:
-Account Prioritization Engine
-Status:
-⚪ Planned
+GTM Brain helps Enterprise Account Executives generate high-quality pipeline by transforming fragmented company information into actionable GTM intelligence.
 
-Phase 3
-Territory Planner
-Goal:
-Generate complete territory strategies using AI.
-Deliverable:
-Territory Planning System
-Status:
-⚪ Planned
+## Product 1 — GTM Brain
 
-Phase 4
-Founding AE OS
-Goal:
-Combine every module into one AI-native GTM platform.
-Deliverable:
-Founding AE Operating System
-Status:
-⚪ Planned
+### Purpose
 
-Active Sprint
-Sprint 1 — GTM Brain 
+Help Enterprise Account Executives generate high-quality pipeline by transforming fragmented company information into actionable GTM intelligence.
+The GTM Brain helps Account Executives answer:
+
+• Why this company?
+• Why now?
+• Why us?
+• Who should we talk to?
+• What should we do next?
+
+### Initial Use Case
+
+Founding AE — Vercel Israel
+
+### Version 0.1 Scope
+
+The first working version accepts a single company name and generates a GTM Brief containing:
+
+* Company Summary
+* ICP Fit
+* Why This Company
+* Why Now
+* Why Us
+* Pain Hypotheses
+* Buying Signals
+* People to Talk To
+* Suggested Outreach
+* Recommended Next Step
+
+### Current Milestone
+
+✅ Next.js application initialized
+✅ Local development server running
+
+## Future Products
+
+### Product 2 — Territory OS
+
+Help Enterprise Account Executives map, prioritize, and manage a territory.
+
+### Product 3 — Deal OS
+
+Help Enterprise Account Executives manage complex opportunities after pipeline is created.
+
+### Product 4 — Execution OS
+
+Help Enterprise Account Executives execute daily sales activities with AI assistance.
+
+## Active Sprint
+
+Sprint 1 — GTM Brain v0.1
+
 Objective:
-Build the first working version of GTM Brain for Enterprise Account Executives.
-Current Use Case:
-Vercel Enterprise Sales.
-Current Status:
-🟢 In Progress
-Deliverable:
-Deliverable:
-A working version of GTM Brain that generates an actionable GTM Brief for any target company.
 
-Parking Lot
-Future Enhancements
-Account Strategy Score
-Dynamic Persona Intelligence (automatic updates from LinkedIn, company news, hiring activity, and other public sources)
-These ideas are intentionally postponed until after the first working MVP has been delivered.
-Nothing moves from the Parking Lot into the sprint unless it becomes the highest priority.
+Build the first working screen of GTM Brain.
 
-Working Rhythm
-Every Day
-Build
-Test
-Learn
-Document
-Every Week
-Ship something usable
-Review
-Plan the next sprint
+The first version should allow the user to enter a company name and see a structured GTM Brief.
 
-Project Naming Convention
-Item
-Name
-Project
-Founding AE OS
-Product
-GTM Brain
-Current Sprint
-Sprint 1
-Initial Use Case
-Vercel Enterprise Sales
+## Parking Lot
 
+* Account Strategy Score
+* Dynamic Persona Intelligence
+* CRM integration
+* Email automation
+* Calendar integration
+* Multi-agent workflows
 
-Definitions
-Project – The overall initiative that includes all products, sprints, and future modules.
-Product – The AI application being built within the project.
-Sprint – A focused development cycle with a specific deliverable.
-Initial Use Case – The first real-world implementation used to build and validate the product.
+## Working Rhythm
+
+Build first. Refactor later.
+
+Every session should end with one of the following:
+
+* A working feature
+* A documented product decision
+* A committed change
+* A clear next build
+
+## Definitions
+
+Project — Founding AE OS
+Product 1 — GTM Brain
+Current Sprint — GTM Brain v0.1
+Initial Use Case — Founding AE, Vercel Israel
