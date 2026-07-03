@@ -65,13 +65,22 @@ Help Enterprise Account Executives execute daily sales activities with AI assist
 
 ## Active Sprint
 
-Sprint 1 — GTM Brain v0.1
+### Sprint 2 — Building the GTM Workspace
 
-Objective:
+**Objective**
 
-Build the first working screen of GTM Brain.
+Transform GTM Brain from a static GTM Brief into a modern SaaS workspace.
 
-The first version should allow the user to enter a company name and see a structured GTM Brief.
+Current Sprint Goals:
+
+- Improve the overall application layout.
+- Build a clear information hierarchy.
+- Organize the experience into:
+  - Decision Layer
+  - Research Layer
+  - Action Layer
+- Extract reusable React components.
+- Keep the application fully functional after every iteration.
 
 ## Parking Lot
 

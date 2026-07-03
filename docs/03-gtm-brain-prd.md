@@ -62,6 +62,20 @@ so that I can quickly understand whether the account is worth pursuing, why now 
 
 ---
 
+## AI Design Principles
+
+The GTM Brain is designed to be model-agnostic.
+
+All AI capabilities should go through a centralized AI Provider layer.
+
+The UI and business logic should never depend directly on a specific LLM provider.
+
+This architecture allows the product to evolve, compare providers, and adopt new models over time without changing the core application.
+
+Model selection is intentionally deferred until the GTM workflow and user experience have been validated.
+
+---
+
 ## Input
 
 For Sprint 1, the user enters one required input:
@@ -86,7 +100,42 @@ The GTM Brain generates a structured GTM Brief containing:
 * Recommended Next Step
 
 ---
+## User Experience
 
+GTM Brain should not feel like an AI-generated report.
+
+It should feel like a modern SaaS workspace similar to products like Vercel, Linear, GitHub and Stripe.
+
+The interface should prioritize decision making over information.
+
+Information should be organized into three clear layers:
+
+### 1. Decision Layer
+
+- Opportunity Score
+- Priority
+- Why this account
+- Top Pain
+- Best First Persona
+- Recommended Next Action
+
+### 2. Research Layer
+
+- Executive Summary
+- Why Now
+- Why Us
+- Buying Signals
+- Personas
+- Discovery Questions
+
+### 3. Action Layer
+
+Future capabilities include:
+
+- Email Draft
+- LinkedIn Message
+- Call Plan
+- Next Steps
 ## GTM Brief Experience
 
 The first version should be a single-screen experience.
@@ -193,3 +242,60 @@ The GTM Brain should not simply summarize company information.
 It should think like an experienced Enterprise Account Executive focused on pipeline generation.
 
 Its purpose is to transform account research into GTM judgment and action.
+---
+
+## Future Enhancements
+
+Features that are intentionally out of scope for the current product are tracked in:
+
+**docs/04-parking-lot.md**
+
+## Bulk Account Prioritization
+
+Allow the user to upload a CSV or Excel file containing hundreds of target accounts.
+
+GTM Brain analyzes every account and recommends where the AE should focus first.
+
+Each account should include:
+
+- Priority Score
+- ICP Fit
+- Buying Signal Strength
+- Why This Company
+- Why Now
+- Why Us
+- Recommended Buying Committee
+- Suggested First Outreach
+- Estimated Time to First Meeting
+
+---
+
+## Long-Term Product Vision
+
+The long-term vision of GTM Brain is not simply to analyze accounts.
+
+Its purpose is to help Enterprise Account Executives make better decisions about where to invest their time.
+
+Rather than asking:
+
+"Tell me about Company X."
+
+The user should eventually be able to ask:
+
+"Here are 500 accounts.
+
+Which ones should I prioritize first, and why?"
+
+Every recommendation should be transparent.
+
+The system should explain:
+
+- Why an account received its score.
+- Which buying signals were identified.
+- Which assumptions were made.
+- Which information is still missing.
+- Why this account ranks above others.
+
+The goal is not AI-generated research.
+
+The goal is AI-assisted GTM judgment.

@@ -9,7 +9,15 @@ import { GtmBriefResult } from "./gtm-brief-result";
 
 const LOADING_DURATION_MS = 2000;
 
-export function GtmBriefExperience() {
+type GtmBriefExperienceProps = {
+  onStatusChange?: (status: GtmBriefStatus) => void;
+  workspace?: boolean;
+};
+
+export function GtmBriefExperience({
+  onStatusChange,
+  workspace = false,
+}: GtmBriefExperienceProps = {}) {
   const [company, setCompany] = useState("");
   const [status, setStatus] = useState<GtmBriefStatus>("idle");
   const [brief, setBrief] = useState<GtmBrief | null>(null);
@@ -23,6 +31,10 @@ export function GtmBriefExperience() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,8 +75,8 @@ export function GtmBriefExperience() {
       )}
 
       {status === "complete" && brief && (
-        <div className="mt-8 flex w-full justify-center">
-          <GtmBriefResult brief={brief} />
+        <div className="mt-8 w-full">
+          <GtmBriefResult brief={brief} workspace={workspace} />
         </div>
       )}
     </div>
