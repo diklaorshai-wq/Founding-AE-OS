@@ -5,7 +5,7 @@ type GtmBriefSectionProps = {
 
 export function GtmBriefSection({ title, children }: GtmBriefSectionProps) {
   return (
-    <section className="border-t border-zinc-200/80 px-6 py-6 first:border-t-0 first:pt-0 sm:px-8">
+    <section className="px-5 py-5 sm:px-6 sm:py-6">
       <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">
         {title}
       </h3>

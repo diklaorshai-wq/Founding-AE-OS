@@ -60,7 +60,11 @@ export function GtmBriefExperience({
   }
 
   return (
-    <div className="mt-12 w-full sm:mt-14">
+    <div
+      className={
+        workspace ? "mt-6 w-full sm:mt-8" : "mt-12 w-full sm:mt-14"
+      }
+    >
       <GtmBriefForm
         company={company}
         onCompanyChange={setCompany}
@@ -75,7 +79,7 @@ export function GtmBriefExperience({
       )}
 
       {status === "complete" && brief && (
-        <div className="mt-8 w-full">
+        <div className={`w-full ${workspace ? "mt-3" : "mt-8"}`}>
           <GtmBriefResult brief={brief} workspace={workspace} />
         </div>
       )}

@@ -56,7 +56,7 @@ export function HomeContent() {
             </p>
           </div>
 
-          <div className={isCompact ? "w-full -mt-2 sm:-mt-4" : "w-full"}>
+          <div className={isCompact ? "w-full -mt-4 sm:-mt-6" : "w-full"}>
             <GtmBriefExperience
               onStatusChange={handleStatusChange}
               workspace={isCompact}

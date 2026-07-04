@@ -2,35 +2,66 @@
 
 ## Product
 
-GTM Brain is an AI-native Pipeline Generation Brain for Enterprise Account Executives.
+GTM Brain is an AI-native Territory Acceleration Workspace for Enterprise Account Executives.
 
-Its purpose is to help Account Executives generate high-quality pipeline by transforming fragmented company information into actionable GTM intelligence.
+Operating before the CRM workflow begins, it helps Enterprise AEs ramp faster in new territories by identifying the highest-potential accounts and providing the fastest path to a meaningful first customer meeting.
 
-The first use case is Founding AE — Vercel Israel, but the product is designed to support any complex B2B enterprise sales motion.
+Rather than replacing the existing sales stack, GTM Brain acts as an intelligence and decision layer that helps Account Executives answer one critical question before investing hours in research and outreach:
+
+**"Does this account deserve my time right now?"**
+
+If the answer is yes, GTM Brain provides the research, evidence, and recommended actions needed to prepare for a high-quality first customer conversation.
+
+The initial use case is a Founding Account Executive building the Vercel Israel territory, but the architecture is designed to support any complex B2B enterprise sales motion.
 
 ---
 
 ## Problem
 
-Enterprise Account Executives spend a significant amount of time researching accounts before prospecting, territory planning, outreach, and first customer conversations.
+When Enterprise Account Executives inherit a new territory or join a new company, they face a critical cold-start problem.
 
-The information exists, but it is scattered across multiple sources and difficult to transform into a clear point of view.
+Building pipeline is not simply about researching companies.
 
-The challenge is not finding information.
+It is about deciding where to invest limited time and attention.
 
-The challenge is turning information into pipeline-generating judgment.
+This challenge is driven by three fundamental problems.
 
-An Account Executive needs to quickly answer questions such as:
+### 1. Prioritizing the Right Accounts
 
-* Is this company a good fit?
-* Why this account?
-* Why now?
-* Why are we relevant?
-* What pain might they have?
-* What buying signals can we identify?
-* Who should we talk to first?
-* What point of view should we lead with?
-* What should we do next?
+Enterprise Account Executives do not need another search engine.
+
+They need a faster way to determine which accounts deserve their time.
+
+The challenge is transforming a territory into a focused, prioritized execution plan.
+
+### 2. Insight Asymmetry
+
+The problem is not a lack of information.
+
+It is the gap between information and judgment.
+
+Buying signals, engineering priorities, company strategy, hiring trends, technology choices, and organizational changes exist across dozens of disconnected sources.
+
+Enterprise AEs spend hours collecting information instead of applying sales judgment.
+
+### 3. The Pre-CRM Gap
+
+Modern revenue platforms are designed to manage opportunities after pipeline already exists.
+
+However, there is a critical gap before the CRM workflow begins.
+
+Before creating an opportunity, an Enterprise AE must answer questions such as:
+
+- Is this account worth pursuing?
+- Why this account?
+- Why now?
+- What is our point of view?
+- Who should we engage first?
+- What is the fastest path to a meaningful first meeting?
+
+Very few tools are designed to help Enterprise Account Executives make these decisions.
+
+GTM Brain fills that gap by transforming fragmented information into confident GTM decisions before pipeline is created.
 
 ---
 

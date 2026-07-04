@@ -5,13 +5,18 @@ Mission
 The mission is to transform more than 20 years of enterprise sales experience into AI-powered software.
 AI is the medium—not the objective.
 The long-term goal is to become one of the strongest AI-native Founding Account Executives by learning to design and build practical AI workflows and agents that solve real GTM problems.
-The immediate goal is to build a working prototype that can be demonstrated during my interview process.
+The immediate goal is to build GTM Brain — an AI-native product that helps Enterprise Account Executives ramp faster by identifying the highest-potential accounts in a new territory and providing the fastest path to a first meaningful meeting.
+
+The prototype will also demonstrate my ability to think like a product builder, collaborate with AI, and build modern software during my interview process.
 
 Vision
 The future of enterprise sales will not belong to the salesperson who knows the most.
 It will belong to the salesperson who can design intelligent systems that scale their expertise.
 Founding AE OS is my journey toward becoming that salesperson.
 This project is the operating system I am building for that future.
+Founding AE OS is not intended to replace existing sales systems.
+It exists before the CRM workflow begins.
+Its purpose is to help Enterprise Account Executives decide where to invest their time before opportunities are created.
 
 Background
 I am an Enterprise Account Executive with more than 20 years of experience selling complex B2B technology.
@@ -94,7 +99,7 @@ Learn AI by building AI products.
 Deliverable
 GTM Brain
 
-Phase 2 — Buying Signal Engine
+Phase 2 — Territory Intelligence
 Goal
 Automatically identify buying signals.
 Deliverable
@@ -117,20 +122,18 @@ Sprint 1 — GTM Brain
 Goal
 Build the first working GTM Brain for Enterprise Account Executives.
 Initial Use Case: Vercel Enterprise Sales.
-The MVP accepts a single company name and produces a structured GTM Brief containing:
-Executive Summary
-Company Overview
-Why This Company / Why Now
-Solution Fit
-Buying Signals
-Discovery Hypotheses
-Buying Committee
-Interactive Persona Workspace
-Account Strategy
-Suggested Outreach
-Recommended Next Actions
-The objective is not perfection.
-The objective is to ship a working MVP.
+The MVP accepts a single company name and generates a GTM Workspace.
+CThe GTM Workspace helps an Enterprise Account Executive answer:
+
+- Should I invest time in this account?
+- Why this account?
+- Why now?
+- Who should I engage first?
+- What pain is most likely?
+- How should I prepare for the first meeting?
+- What should I do next?
+
+The GTM Brief is one component of the GTM Workspace—not the product itself.
 
 Definition of Success
 Success is not measured by lines of code.

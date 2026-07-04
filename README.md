@@ -19,9 +19,11 @@ This project has three equally important goals:
 Current Product:
 **GTM Brain**
 
-Current Sprint:
-**Sprint 2 – Building the GTM Workspace**
+Current Phase:
+**Intelligence Engine**
 
+Current Goal:
+**Design how GTM Brain thinks before integrating AI.**
 ---
 
 # Project Workflow
@@ -71,3 +73,21 @@ The documentation is the single source of truth for product decisions.
 - Document important decisions.
 - Prefer simple solutions.
 - Build one feature at a time.
+
+---
+
+# Working with AI
+
+Before proposing product or architecture changes:
+
+1. Read:
+   - docs/00-north-star.md
+   - docs/03-gtm-brain-prd.md
+   - docs/01-product-roadmap.md
+   - docs/04-parking-lot.md
+
+2. Treat these documents as the single source of truth.
+
+3. Build on existing product decisions.
+
+4. Do not recreate strategy documents unless explicitly requested.
