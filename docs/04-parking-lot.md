@@ -51,6 +51,24 @@ Keeping them here helps us stay focused while ensuring no good idea is lost.
 
 ---
 
+## Company Evaluation Framework — Parking Lot (V2)
+
+- Evidence Strength model
+- Confidence scoring methodology
+- Weighted criteria
+- Industry-specific evidence weighting
+- Similar customer relevance scoring
+- Competitive intelligence engine
+- Account history integration
+- AE Advantage layer
+- Relationship graph
+- Champion identification
+- Buying committee mapping
+- Multi-source evidence validation
+- Recommendation explanation engine
+
+---
+
 ## Working Rule
 
 If an idea is not part of the current sprint, it belongs in this document.
