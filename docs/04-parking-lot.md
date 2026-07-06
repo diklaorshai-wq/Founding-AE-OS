@@ -72,3 +72,16 @@ Keeping them here helps us stay focused while ensuring no good idea is lost.
 ## Working Rule
 
 If an idea is not part of the current sprint, it belongs in this document.
+
+---
+
+Evidence Strength Framework
+
+## Recommendation Engine (V2)
+
+- Replace the rule-based recommendation engine with an Evidence-Based Judgment Engine.
+- Introduce evidence strength evaluation.
+- Weight evidence based on quality rather than fixed gate weights.
+- Allow different evidence types to contribute differently to the final recommendation.
+- Support confidence scoring based on evidence quality and consistency.
+- Explain recommendations using weighted evidence rather than static rules.
