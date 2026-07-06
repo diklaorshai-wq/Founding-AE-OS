@@ -105,6 +105,23 @@ This architecture allows the product to evolve, compare providers, and adopt new
 
 Model selection is intentionally deferred until the GTM workflow and user experience have been validated.
 
+The Intelligence Engine is designed independently from both the user interface and the automation layer.
+
+This separation allows future integrations, workflows, and orchestration platforms (such as Make) to evolve without changing the core decision logic.
+
+---
+
+## Architecture Principles
+
+The product architecture intentionally separates four responsibilities:
+
+- Intelligence Engine — evaluates the account and generates recommendations.
+- GTM Workspace — presents the intelligence to the user.
+- AI Provider Layer — supplies LLM capabilities without coupling the application to a specific model.
+- Automation Layer — future orchestration of workflows and integrations (e.g. Make).
+
+Each layer should evolve independently whenever possible.
+
 ---
 
 ## Input
@@ -117,18 +134,24 @@ For Sprint 1, the user enters one required input:
 
 ## Output
 
-The GTM Brain generates a structured GTM Brief containing:
+The GTM Brain generates a GTM Workspace organized into three layers:
 
-* Company Summary
-* ICP Fit
-* Why This Company
-* Why Now
-* Why Us
-* Pain Hypotheses
-* Buying Signals
-* People to Talk To
-* Suggested Outreach
-* Recommended Next Step
+- Decision Layer
+- Research Layer
+- Action Layer
+
+The workspace presents a structured GTM Brief containing:
+
+- Company Summary
+- ICP Fit
+- Why This Company
+- Why Now
+- Why Us
+- Pain Hypotheses
+- Buying Signals
+- People to Talk To
+- Suggested Outreach
+- Recommended Next Step
 
 ---
 ## User Experience
@@ -218,7 +241,7 @@ For each relevant persona, the GTM Brain should identify:
 
 Sprint 1 focuses on building the first working GTM Brain experience.
 
-The product should accept a single company name and generate one complete GTM Brief.
+The product should accept a single company name and generate one complete GTM Workspace containing the GTM Brief and supporting decision layers.
 
 The first implementation is optimized for Founding AE — Vercel Israel.
 
@@ -251,7 +274,7 @@ These features belong in the Parking Lot.
 
 ## Success Criteria
 
-Sprint 1 is successful if an Enterprise Account Executive can use the generated GTM Brief to decide whether and how to pursue a target account.
+Sprint 1 is successful if an Enterprise Account Executive can use the GTM Workspace to confidently decide whether and how to pursue a target account.
 
 The output should demonstrate:
 
@@ -280,6 +303,12 @@ Its purpose is to transform account research into GTM judgment and action.
 Features that are intentionally out of scope for the current product are tracked in:
 
 **docs/04-parking-lot.md**
+
+### Automation
+
+Future versions will use an automation layer to orchestrate workflows, trigger research, synchronize external systems, and support AI agents.
+
+Automation is intentionally separated from the Intelligence Engine and is not part of Sprint 1.
 
 ## Bulk Account Prioritization
 

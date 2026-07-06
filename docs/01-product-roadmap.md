@@ -10,7 +10,9 @@ Founding AE OS is an AI-native platform for Enterprise Account Executives.
 
 The first product experience is GTM Brain: an AI-native Pipeline Generation Brain.
 
-GTM Brain helps Enterprise Account Executives generate high-quality pipeline by transforming fragmented company information into actionable GTM intelligence.
+GTM Brain helps Enterprise Account Executives identify which accounts deserve their time by transforming fragmented company information into actionable GTM intelligence.
+
+The goal is to accelerate high-quality pipeline generation by helping AEs make better account prioritization decisions before opportunities exist.
 
 ## Product 1 — GTM Brain
 
@@ -30,26 +32,25 @@ The GTM Brain helps Account Executives answer:
 Founding AE — Vercel Israel
 
 ### Version 0.1 Scope
+The first working version accepts a single company name and generates a complete GTM Workspace that helps an Enterprise Account Executive decide whether an account deserves investment.
 
-The first working version accepts a single company name and generates a GTM Brief containing:
-
-* Company Summary
-* ICP Fit
-* Why This Company
-* Why Now
-* Why Us
-* Pain Hypotheses
-* Buying Signals
-* People to Talk To
-* Suggested Outreach
-* Recommended Next Step
+The detailed workspace specification is maintained in the Product Requirements Document (PRD).
 
 ### Current Milestone
 
-✅ Next.js application initialized
-✅ Local development server running
+✅ Product vision defined
+✅ Core product documentation completed
+✅ GTM Workspace architecture completed
+🚧 GTM Intelligence Engine in development
 
 ## Future Products
+
+## Future Platform Capabilities
+
+- AI Agent orchestration
+- Automation Layer (Make)
+- External integrations
+- CRM synchronization
 
 ### Product 2 — Territory OS
 
@@ -65,22 +66,19 @@ Help Enterprise Account Executives execute daily sales activities with AI assist
 
 ## Active Sprint
 
-### Sprint 2 — Building the GTM Workspace
+### Sprint 3 — Building the GTM Intelligence Engine
 
 **Objective**
 
-Transform GTM Brain from a static GTM Brief into a modern SaaS workspace.
+Design and implement the intelligence behind GTM Brain.
 
 Current Sprint Goals:
 
-- Improve the overall application layout.
-- Build a clear information hierarchy.
-- Organize the experience into:
-  - Decision Layer
-  - Research Layer
-  - Action Layer
-- Extract reusable React components.
-- Keep the application fully functional after every iteration.
+- Define how GTM Brain evaluates an account.
+- Build the Enterprise AE Decision Framework.
+- Separate intelligence from presentation.
+- Keep the Intelligence Engine independent from the UI.
+- Prepare the architecture for future AI agents and automation.
 
 ## Parking Lot
 
@@ -90,6 +88,7 @@ Current Sprint Goals:
 * Email automation
 * Calendar integration
 * Multi-agent workflows
+* Automation workflows (Make)
 
 ## Working Rhythm
 

@@ -26,6 +26,14 @@ Keeping them here helps us stay focused while ensuring no good idea is lost.
 - Authentication
 - Real web research
 - AI chat with GTM Brain
+- Automation workflows (Make)
+- Workflow orchestration
+
+---
+
+## Documentation
+
+- Architecture Overview document
 
 ---
 
@@ -39,7 +47,7 @@ Keeping them here helps us stay focused while ensuring no good idea is lost.
 
 ---
 
-## AI Research
+## AI Platform Research
 
 * Compare OpenAI, Claude, Gemini, and other LLM providers.
 * Benchmark reasoning quality for GTM analysis.
@@ -72,12 +80,11 @@ Keeping them here helps us stay focused while ensuring no good idea is lost.
 ## Working Rule
 
 If an idea is not part of the current sprint, it belongs in this document.
+Ideas leave the Parking Lot only when they become part of an approved sprint.
 
 ---
 
-Evidence Strength Framework
-
-## Recommendation Engine (V2)
+## Evidence-Based Judgment Engine (V2)
 
 - Replace the rule-based recommendation engine with an Evidence-Based Judgment Engine.
 - Introduce evidence strength evaluation.

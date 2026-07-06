@@ -9,6 +9,8 @@ The immediate goal is to build GTM Brain — an AI-native product that helps Ent
 
 The prototype will also demonstrate my ability to think like a product builder, collaborate with AI, and build modern software during my interview process.
 
+The long-term architecture separates intelligence from automation. GTM Brain generates decisions and recommendations, while automation platforms (such as Make) will eventually orchestrate workflows and integrations.
+
 Vision
 The future of enterprise sales will not belong to the salesperson who knows the most.
 It will belong to the salesperson who can design intelligent systems that scale their expertise.
@@ -95,7 +97,7 @@ What we build tomorrow
 Long-Term Roadmap
 Phase 1 — AI Foundations Through Building
 Goal
-Learn AI by building AI products.
+Learn AI by building intelligent workflows, agents, and AI-native products
 Deliverable
 GTM Brain
 
@@ -118,12 +120,12 @@ Deliverable
 Founding AE Operating System
 
 Current Sprint
-Sprint 1 — GTM Brain 
+Sprint 1 — GTM Brain MVP
 Goal
 Build the first working GTM Brain for Enterprise Account Executives.
 Initial Use Case: Vercel Enterprise Sales.
 The MVP accepts a single company name and generates a GTM Workspace.
-CThe GTM Workspace helps an Enterprise Account Executive answer:
+The GTM Workspace helps an Enterprise Account Executive answer:
 
 - Should I invest time in this account?
 - Why this account?

@@ -2,8 +2,9 @@
 
 ## Sprint Goal
 
-Build the first working version of GTM Brain that generates an actionable GTM Brief from a single company name.
-The user enters a company name and receives an AI-generated GTM Brief.
+Build the first working version of GTM Brain that generates a complete GTM Workspace from a single company name.
+
+The user enters a company name and receives a workspace that helps determine whether the account deserves investment.
 
 ---
 
@@ -25,31 +26,41 @@ Input
 
 Output
 
-A GTM Brief containing:
-* Executive Summary
-* ICP Fit
-* Why This Company
-* Why Now
-* Why Us
-* Pain Hypotheses
-* Buying Signals
-* People to Talk To
-* Suggested Outreach
-* Recommended Next Step
+A GTM Workspace containing:
+
+- Decision Layer
+- Research Layer
+- Action Layer
+
+The workspace includes:
+
+- Executive Summary
+- ICP Fit
+- Why This Company
+- Why Now
+- Why Us
+- Pain Hypotheses
+- Buying Signals
+- People to Talk To
+- Suggested Outreach
+- Recommended Next Step
+
+The GTM Brief represents the core intelligence presented within the GTM Workspace.
 
 ---
 
 ## Version 0.1
 
-This version focuses only on Pipeline Generation.
+This version focuses on account evaluation before pipeline creation.
 
-No CRM.
+Scope limitations:
 
-No integrations.
+- No CRM integration
+- No external integrations
+- No automation workflows
+- No multi-agent orchestration
 
-No multi-agent workflows.
-
-The objective is to create one beautiful working screen.
+The objective is to validate the core intelligence and deliver it through a simple workspace.
 
 ---
 
@@ -59,7 +70,9 @@ Build the frontend using Next.js.
 
 Initially use mock data.
 
-Real AI and APIs will be connected later.
+Design the Intelligence Engine independently from the UI.
+
+Real AI, external data sources, and automation will be connected in later versions.
 
 ---
 
@@ -69,23 +82,32 @@ A user can:
 
 1. Enter a company name.
 2. Click Analyze.
-3. Receive a complete GTM Brief.
+3. Receive a complete GTM Workspace.
 4. Feel that the output is immediately useful for prospecting.
+5. Understand why the account is or is not worth pursuing.
 
 ---
 
 ## Current Status
 
-✅ Project initialized
+✅ Product vision completed
 
-✅ Next.js running locally
+✅ Workspace design completed
 
-⬜ Build first page
+✅ Core documentation completed
 
-⬜ Create Analyze screen
+🚧 Intelligence Engine design in progress
 
-⬜ Display mock GTM Brief
+⬜ Implement Decision Framework
 
 ⬜ Connect AI
 
-⬜ Connect live data
+⬜ Connect external data
+
+
+## Architecture Principles
+
+- Intelligence is independent from presentation.
+- The GTM Workspace displays decisions; it does not generate them.
+- Automation is intentionally out of scope for Version 0.1.
+- The architecture should support future integrations through an Automation Layer (e.g. Make) without changing the Intelligence Engine.
