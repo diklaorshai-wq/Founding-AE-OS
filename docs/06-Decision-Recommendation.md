@@ -29,6 +29,43 @@ along with:
 - Confidence
 - Recommended Next Best Action
 
+---
+
+## Recommendation Engine Principles
+
+The Recommendation Engine is responsible for making the final recommendation.
+
+Large Language Models (LLMs) are used to collect, summarize, and structure evidence from company data, but they do not make investment decisions.
+
+The recommendation is always produced by the GTM Brain Recommendation Engine using the Company Evaluation Framework.
+
+This separation ensures:
+
+- Explainable recommendations
+- Consistent decision logic
+- Deterministic behavior
+- Easy testing
+- Model independence
+- Enterprise-grade trust
+
+Recommendation flow:
+
+Raw Company Data
+↓
+AI Evidence Extraction
+(Vercel AI SDK)
+↓
+Structured Evaluation
+(Why Them / Why Now / Why Us)
+↓
+Recommendation Engine
+(TypeScript)
+↓
+Invest / Monitor / Skip
+
+---
+
+
 ## Design Principle
 
 The Recommendation Engine does not collect evidence.
