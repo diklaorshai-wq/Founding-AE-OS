@@ -1,138 +1,125 @@
-export type GateStatus = "pass" | "fail" | "unknown";
+import {
+  AssessmentStatus,
+  ConfidenceLevel,
+  Recommendation,
+  type GateAssessment,
+} from "../domain/evaluation";
 
-export type EvaluationGate = {
-  id: string;
-  name: string;
-  status: GateStatus;
-  /** When status is fail, defaults to true. Significant fails can trigger Skip. */
-  significant?: boolean;
-  evidence?: string[];
-};
-
-export type CompanyEvaluationInput = {
+export type AccountRecommendationInput = {
   companyName: string;
   productName?: string;
-  whyThem: EvaluationGate[];
-  whyNow: EvaluationGate[];
-  whyUs: EvaluationGate[];
+  whyThem: GateAssessment;
+  whyNow: GateAssessment;
+  whyUs: GateAssessment;
 };
 
-export type RecommendationDecision = "Invest" | "Monitor" | "Skip";
-
 export type RecommendationResult = {
-  decision: RecommendationDecision;
-  confidence: number;
+  decision: Recommendation;
+  confidence: ConfidenceLevel;
   businessCase: string;
   supportingEvidence: string[];
   recommendedNextBestAction: string;
 };
 
-const UNKNOWN_MAJORITY_THRESHOLD = 0.5;
-const PASS_MAJORITY_THRESHOLD = 0.5;
-
-function getAllGates(input: CompanyEvaluationInput): EvaluationGate[] {
-  return [...input.whyThem, ...input.whyNow, ...input.whyUs];
+function getAllGates(input: AccountRecommendationInput): GateAssessment[] {
+  return [input.whyThem, input.whyNow, input.whyUs];
 }
 
-function isSignificantFail(gate: EvaluationGate): boolean {
-  return gate.status === "fail" && gate.significant !== false;
+/**
+ * V1 decision logic uses explicit gate rules rather than majority thresholds
+ * or significant-failure weighting:
+ * - Why Them fail -> Skip
+ * - Why Us fail -> Skip
+ * - Why Now fail never triggers Skip by itself
+ * - All three gates pass -> Invest
+ * - Every other valid combination -> Monitor
+ */
+function resolveDecision(input: AccountRecommendationInput): Recommendation {
+  if (
+    input.whyThem.status === AssessmentStatus.Fail ||
+    input.whyUs.status === AssessmentStatus.Fail
+  ) {
+    return Recommendation.Skip;
+  }
+
+  const allGatesPass =
+    input.whyThem.status === AssessmentStatus.Pass &&
+    input.whyNow.status === AssessmentStatus.Pass &&
+    input.whyUs.status === AssessmentStatus.Pass;
+
+  if (allGatesPass) {
+    return Recommendation.Invest;
+  }
+
+  return Recommendation.Monitor;
 }
 
-function countByStatus(gates: EvaluationGate[]) {
-  return gates.reduce(
-    (counts, gate) => {
-      counts[gate.status] += 1;
-      return counts;
-    },
-    { pass: 0, fail: 0, unknown: 0 },
+/**
+ * Confidence is derived only from the three gate-level confidence values:
+ * - all high -> high
+ * - any low (or missing) -> low
+ * - otherwise -> medium
+ */
+function calculateConfidence(gates: GateAssessment[]): ConfidenceLevel {
+  if (gates.some((gate) => gate.confidence === ConfidenceLevel.Low || !gate.confidence)) {
+    return ConfidenceLevel.Low;
+  }
+
+  if (gates.every((gate) => gate.confidence === ConfidenceLevel.High)) {
+    return ConfidenceLevel.High;
+  }
+
+  return ConfidenceLevel.Medium;
+}
+
+function collectSupportingEvidence(gates: GateAssessment[]): string[] {
+  return gates.flatMap((gate) =>
+    gate.criteria.flatMap((criterion) => criterion.evidence ?? []),
   );
 }
 
-function calculateConfidence(gates: EvaluationGate[]): number {
-  if (gates.length === 0) {
-    return 0;
-  }
-
-  const { pass, fail } = countByStatus(gates);
-  const knownCount = pass + fail;
-
-  return Math.round((knownCount / gates.length) * 100);
-}
-
-function collectSupportingEvidence(gates: EvaluationGate[]): string[] {
-  return gates.flatMap((gate) => gate.evidence ?? []);
-}
-
-function resolveDecision(gates: EvaluationGate[]): RecommendationDecision {
-  if (gates.length === 0) {
-    return "Monitor";
-  }
-
-  const { pass, unknown } = countByStatus(gates);
-  const significantFails = gates.filter(isSignificantFail);
-
-  if (significantFails.length > 0) {
-    return "Skip";
-  }
-
-  const unknownRatio = unknown / gates.length;
-  if (unknownRatio >= UNKNOWN_MAJORITY_THRESHOLD) {
-    return "Monitor";
-  }
-
-  const passRatio = pass / gates.length;
-  if (passRatio > PASS_MAJORITY_THRESHOLD) {
-    return "Invest";
-  }
-
-  return "Monitor";
-}
-
 function buildBusinessCase(
-  input: CompanyEvaluationInput,
-  decision: RecommendationDecision,
-  gates: EvaluationGate[],
+  input: AccountRecommendationInput,
+  decision: Recommendation,
 ): string {
-  const { pass, fail, unknown } = countByStatus(gates);
   const productLabel = input.productName ?? "this product";
-  const significantFails = gates.filter(isSignificantFail);
 
   switch (decision) {
-    case "Skip":
-      return `${input.companyName} is not recommended for immediate pursuit for ${productLabel}. ${significantFails.length} significant evaluation gate(s) failed, indicating the account is unlikely to justify enterprise sales investment at this time.`;
-    case "Invest":
-      return `${input.companyName} shows strong evidence across Why Them, Why Now, and Why Us for ${productLabel}. ${pass} of ${gates.length} gates passed with no significant failures, supporting prioritization for active outreach.`;
-    case "Monitor":
-      return `${input.companyName} may be worth tracking for ${productLabel}, but the evaluation is not strong enough to prioritize immediate investment. ${unknown} of ${gates.length} gates remain unknown and ${fail} failed without triggering a skip.`;
+    case Recommendation.Skip:
+      return `${input.companyName} is not recommended for immediate pursuit for ${productLabel}. The Why Them or Why Us gate failed, indicating the account is unlikely to justify enterprise sales investment at this time.`;
+    case Recommendation.Invest:
+      return `${input.companyName} shows strong evidence across Why Them, Why Now, and Why Us for ${productLabel}. All three decision gates passed, supporting prioritization for active outreach.`;
+    case Recommendation.Monitor:
+      return `${input.companyName} may be worth tracking for ${productLabel}, but the evaluation is not strong enough to prioritize immediate investment. Not every decision gate passed cleanly, so further evidence is needed before committing to active outreach.`;
   }
 }
 
 function buildRecommendedNextBestAction(
-  decision: RecommendationDecision,
-  input: CompanyEvaluationInput,
+  decision: Recommendation,
+  input: AccountRecommendationInput,
 ): string {
   switch (decision) {
-    case "Invest":
+    case Recommendation.Invest:
       return `Prioritize ${input.companyName} for discovery outreach and validate the strongest passing gates with a relevant executive stakeholder.`;
-    case "Monitor":
+    case Recommendation.Monitor:
       return `Add ${input.companyName} to monitor status, gather missing evidence on unknown gates, and re-evaluate when new signals emerge.`;
-    case "Skip":
+    case Recommendation.Skip:
       return `Deprioritize ${input.companyName} for now and focus AE time on accounts with stronger Why Them, Why Now, and Why Us evidence.`;
   }
 }
 
 export function generateRecommendation(
-  input: CompanyEvaluationInput,
+  input: AccountRecommendationInput,
 ): RecommendationResult {
   const gates = getAllGates(input);
-  const decision = resolveDecision(gates);
+  const decision = resolveDecision(input);
   const confidence = calculateConfidence(gates);
   const supportingEvidence = collectSupportingEvidence(gates);
 
   return {
     decision,
     confidence,
-    businessCase: buildBusinessCase(input, decision, gates),
+    businessCase: buildBusinessCase(input, decision),
     supportingEvidence,
     recommendedNextBestAction: buildRecommendedNextBestAction(decision, input),
   };
