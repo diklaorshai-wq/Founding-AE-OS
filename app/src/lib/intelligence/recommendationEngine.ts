@@ -102,7 +102,7 @@ function buildRecommendedNextBestAction(
     case Recommendation.Invest:
       return `Prioritize ${input.companyName} for discovery outreach and validate the strongest passing gates with a relevant executive stakeholder.`;
     case Recommendation.Monitor:
-      return `Add ${input.companyName} to monitor status, gather missing evidence on unknown gates, and re-evaluate when new signals emerge.`;
+      return `Add ${input.companyName} to monitor status, investigate the gates that did not pass, and re-evaluate when new signals emerge.`;
     case Recommendation.Skip:
       return `Deprioritize ${input.companyName} for now and focus AE time on accounts with stronger Why Them, Why Now, and Why Us evidence.`;
   }

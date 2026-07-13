@@ -44,8 +44,6 @@ export interface CriterionAssessment {
   criterionId: string;
   criterionName: string;
   status: AssessmentStatus;
-  /** When status is fail, defaults to true. Significant fails can trigger Skip. */
-  significant?: boolean;
   evidence?: string[];
 }
 
