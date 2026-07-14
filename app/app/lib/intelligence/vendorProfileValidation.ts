@@ -28,6 +28,7 @@ export function validateVendorProfile(profile: VendorProfile): string[] {
   const criterionIds = new Set(
     strategy.idealCustomerProfile.criteria.map(({ id }) => id),
   );
+  const personaIds = new Set(strategy.targetPersonas.map(({ id }) => id));
 
   for (const outcome of knowledge.desiredOutcomes) {
     checkReferences(errors, `Desired outcome "${outcome.id}"`, outcome.problemIds, problemIds, "problem");
@@ -66,6 +67,16 @@ export function validateVendorProfile(profile: VendorProfile): string[] {
   for (const persona of strategy.targetPersonas) {
     checkReferences(errors, `Persona "${persona.id}"`, persona.problemIds, problemIds, "problem");
     checkReferences(errors, `Persona "${persona.id}"`, persona.outcomeIds, outcomeIds, "outcome");
+  }
+
+  for (const budgetOwner of strategy.budgetOwners) {
+    checkReferences(
+      errors,
+      `Budget owner "${budgetOwner.id}"`,
+      budgetOwner.relatedPersonaIds,
+      personaIds,
+      "persona",
+    );
   }
 
   for (const signal of strategy.whyNowSignals) {
