@@ -19,3 +19,14 @@ test("Vendor Profile validation reports a broken reference", () => {
     'Desired outcome "focus-ae-time" references unknown problem "missing-problem".',
   ]);
 });
+
+test("Vendor Profile validation reports an unknown budget-owner persona", () => {
+  const invalidProfile = structuredClone(gtmBrainVendorProfile);
+  invalidProfile.decisionStrategy.budgetOwners[0].relatedPersonaIds = [
+    "missing-persona",
+  ];
+
+  assert.deepStrictEqual(validateVendorProfile(invalidProfile), [
+    'Budget owner "vp-sales-budget" references unknown persona "missing-persona".',
+  ]);
+});
