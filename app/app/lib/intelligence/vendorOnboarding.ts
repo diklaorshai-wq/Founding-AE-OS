@@ -1,5 +1,6 @@
 import type {
   Capability,
+  BudgetOwner,
   BuyingReason,
   CommonAlternative,
   CustomerProblem,
@@ -16,23 +17,28 @@ import type {
 
 export type VendorOnboardingStageId =
   | "offering"
-  | "value"
+  | "customerValue"
+  | "productFit"
   | "proof"
   | "idealCustomer"
-  | "personas"
-  | "whyNow"
-  | "redFlags";
+  | "people"
+  | "timingAndRisk";
 
 export type VendorOnboardingResponse =
   | {
       stage: "offering";
+      websiteUrl: string;
+      vendorName: string;
       offering: string;
     }
   | {
-      stage: "value";
+      stage: "customerValue";
       customerProblems: CustomerProblem[];
       desiredOutcomes: DesiredOutcome[];
       buyingReasons: BuyingReason[];
+    }
+  | {
+      stage: "productFit";
       capabilities: Capability[];
       useCases: UseCase[];
       commonAlternatives: CommonAlternative[];
@@ -47,15 +53,13 @@ export type VendorOnboardingResponse =
       idealCustomerProfile: IdealCustomerProfile;
     }
   | {
-      stage: "personas";
+      stage: "people";
       targetPersonas: TargetPersona[];
+      budgetOwners: BudgetOwner[];
     }
   | {
-      stage: "whyNow";
+      stage: "timingAndRisk";
       whyNowSignals: WhyNowSignal[];
-    }
-  | {
-      stage: "redFlags";
       redFlags: RedFlag[];
     };
 
@@ -65,6 +69,7 @@ export function createEmptyVendorProfile(
 ): VendorProfile {
   return {
     id,
+    websiteUrl: "",
     vendorName,
     productKnowledge: {
       offering: "",
@@ -84,6 +89,7 @@ export function createEmptyVendorProfile(
         firmographicDisqualifiers: [],
       },
       targetPersonas: [],
+      budgetOwners: [],
       whyNowSignals: [],
       redFlags: [],
     },
@@ -99,12 +105,14 @@ export function applyVendorOnboardingResponse(
     case "offering":
       return {
         ...profile,
+        websiteUrl: response.websiteUrl,
+        vendorName: response.vendorName,
         productKnowledge: {
           ...profile.productKnowledge,
           offering: response.offering,
         },
       };
-    case "value":
+    case "customerValue":
       return {
         ...profile,
         productKnowledge: {
@@ -112,6 +120,13 @@ export function applyVendorOnboardingResponse(
           customerProblems: response.customerProblems,
           desiredOutcomes: response.desiredOutcomes,
           buyingReasons: response.buyingReasons,
+        },
+      };
+    case "productFit":
+      return {
+        ...profile,
+        productKnowledge: {
+          ...profile.productKnowledge,
           capabilities: response.capabilities,
           useCases: response.useCases,
           commonAlternatives: response.commonAlternatives,
@@ -134,27 +149,21 @@ export function applyVendorOnboardingResponse(
           idealCustomerProfile: response.idealCustomerProfile,
         },
       };
-    case "personas":
+    case "people":
       return {
         ...profile,
         decisionStrategy: {
           ...profile.decisionStrategy,
           targetPersonas: response.targetPersonas,
+          budgetOwners: response.budgetOwners,
         },
       };
-    case "whyNow":
+    case "timingAndRisk":
       return {
         ...profile,
         decisionStrategy: {
           ...profile.decisionStrategy,
           whyNowSignals: response.whyNowSignals,
-        },
-      };
-    case "redFlags":
-      return {
-        ...profile,
-        decisionStrategy: {
-          ...profile.decisionStrategy,
           redFlags: response.redFlags,
         },
       };
