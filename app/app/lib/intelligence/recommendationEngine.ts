@@ -4,7 +4,7 @@ export type EvaluationGate = {
   id: string;
   name: string;
   status: GateStatus;
-  /** When status is fail, defaults to true. Significant fails can trigger Skip. */
+  /** When status is fail, defaults to true. Significant fails in Why Them or Why Us can trigger Skip. */
   significant?: boolean;
   evidence?: string[];
 };
@@ -27,15 +27,21 @@ export type RecommendationResult = {
   recommendedNextBestAction: string;
 };
 
-const UNKNOWN_MAJORITY_THRESHOLD = 0.5;
-const PASS_MAJORITY_THRESHOLD = 0.5;
-
 function getAllGates(input: CompanyEvaluationInput): EvaluationGate[] {
   return [...input.whyThem, ...input.whyNow, ...input.whyUs];
 }
 
 function isSignificantFail(gate: EvaluationGate): boolean {
   return gate.status === "fail" && gate.significant !== false;
+}
+
+function hasSignificantFail(gates: EvaluationGate[]): boolean {
+  return gates.some(isSignificantFail);
+}
+
+/** A decision group passes only when it contains at least one assessment and every assessment passed. */
+function groupPasses(gates: EvaluationGate[]): boolean {
+  return gates.length > 0 && gates.every((gate) => gate.status === "pass");
 }
 
 function countByStatus(gates: EvaluationGate[]) {
@@ -63,25 +69,20 @@ function collectSupportingEvidence(gates: EvaluationGate[]): string[] {
   return gates.flatMap((gate) => gate.evidence ?? []);
 }
 
-function resolveDecision(gates: EvaluationGate[]): RecommendationDecision {
-  if (gates.length === 0) {
-    return "Monitor";
-  }
+/**
+ * Why Them and Why Us are gating groups: a significant fail in either means the
+ * account does not deserve outbound time right now, regardless of Why Now.
+ * Why Now only ever raises or lowers urgency, so a fail or unknown there never
+ * blocks the account on its own.
+ */
+function resolveDecision(input: CompanyEvaluationInput): RecommendationDecision {
+  const { whyThem, whyNow, whyUs } = input;
 
-  const { pass, unknown } = countByStatus(gates);
-  const significantFails = gates.filter(isSignificantFail);
-
-  if (significantFails.length > 0) {
+  if (hasSignificantFail(whyThem) || hasSignificantFail(whyUs)) {
     return "Skip";
   }
 
-  const unknownRatio = unknown / gates.length;
-  if (unknownRatio >= UNKNOWN_MAJORITY_THRESHOLD) {
-    return "Monitor";
-  }
-
-  const passRatio = pass / gates.length;
-  if (passRatio > PASS_MAJORITY_THRESHOLD) {
+  if (groupPasses(whyThem) && groupPasses(whyNow) && groupPasses(whyUs)) {
     return "Invest";
   }
 
@@ -95,11 +96,12 @@ function buildBusinessCase(
 ): string {
   const { pass, fail, unknown } = countByStatus(gates);
   const productLabel = input.productName ?? "this product";
-  const significantFails = gates.filter(isSignificantFail);
 
   switch (decision) {
-    case "Skip":
-      return `${input.companyName} is not recommended for immediate pursuit for ${productLabel}. ${significantFails.length} significant evaluation gate(s) failed, indicating the account is unlikely to justify enterprise sales investment at this time.`;
+    case "Skip": {
+      const failedGroup = hasSignificantFail(input.whyThem) ? "Why Them" : "Why Us";
+      return `${input.companyName} is not recommended for immediate pursuit for ${productLabel}. A significant ${failedGroup} failure indicates the account is unlikely to justify enterprise sales investment at this time.`;
+    }
     case "Invest":
       return `${input.companyName} shows strong evidence across Why Them, Why Now, and Why Us for ${productLabel}. ${pass} of ${gates.length} gates passed with no significant failures, supporting prioritization for active outreach.`;
     case "Monitor":
@@ -125,7 +127,7 @@ export function generateRecommendation(
   input: CompanyEvaluationInput,
 ): RecommendationResult {
   const gates = getAllGates(input);
-  const decision = resolveDecision(gates);
+  const decision = resolveDecision(input);
   const confidence = calculateConfidence(gates);
   const supportingEvidence = collectSupportingEvidence(gates);
 
