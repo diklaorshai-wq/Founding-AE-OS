@@ -16,13 +16,18 @@ test("seven onboarding stages build the GTM Brain Vendor Profile", () => {
   const responses = [
     {
       stage: "offering",
+      websiteUrl: gtmBrainVendorProfile.websiteUrl,
+      vendorName: gtmBrainVendorProfile.vendorName,
       offering: knowledge.offering,
     },
     {
-      stage: "value",
+      stage: "customerValue",
       customerProblems: knowledge.customerProblems,
       desiredOutcomes: knowledge.desiredOutcomes,
       buyingReasons: knowledge.buyingReasons,
+    },
+    {
+      stage: "productFit",
       capabilities: knowledge.capabilities,
       useCases: knowledge.useCases,
       commonAlternatives: knowledge.commonAlternatives,
@@ -37,15 +42,13 @@ test("seven onboarding stages build the GTM Brain Vendor Profile", () => {
       idealCustomerProfile: strategy.idealCustomerProfile,
     },
     {
-      stage: "personas",
+      stage: "people",
       targetPersonas: strategy.targetPersonas,
+      budgetOwners: strategy.budgetOwners,
     },
     {
-      stage: "whyNow",
+      stage: "timingAndRisk",
       whyNowSignals: strategy.whyNowSignals,
-    },
-    {
-      stage: "redFlags",
       redFlags: strategy.redFlags,
     },
   ];
@@ -63,9 +66,13 @@ test("an onboarding response updates only its own profile section", () => {
   const profile = createEmptyVendorProfile("gtm-brain", "GTM Brain");
   const updated = applyVendorOnboardingResponse(profile, {
     stage: "offering",
+    websiteUrl: "https://gtmbrain.example",
+    vendorName: "GTM Brain",
     offering: "Outbound decision workspace",
   });
 
+  assert.strictEqual(updated.websiteUrl, "https://gtmbrain.example");
+  assert.strictEqual(updated.vendorName, "GTM Brain");
   assert.strictEqual(updated.productKnowledge.offering, "Outbound decision workspace");
   assert.deepStrictEqual(updated.decisionStrategy, profile.decisionStrategy);
   assert.strictEqual(profile.productKnowledge.offering, "");
