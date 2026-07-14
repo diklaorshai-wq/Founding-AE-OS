@@ -10,6 +10,7 @@ export type EntityId = string;
 export type CustomerProblem = {
   id: EntityId;
   statement: string;
+  impact: string;
 };
 
 export type DesiredOutcome = {
@@ -120,6 +121,17 @@ export type TargetPersona = {
   firstMeetingAngle: string;
 };
 
+export type BudgetResponsibility = "owns" | "approves" | "influences";
+
+/** Typical vendor-level budget guidance, not evidence of budget in an account. */
+export type BudgetOwner = {
+  id: EntityId;
+  roleOrFunction: string;
+  responsibilities: BudgetResponsibility[];
+  relatedPersonaIds: EntityId[];
+  whyItMatters: string;
+};
+
 export type WhyNowSignal = {
   id: EntityId;
   signal: string;
@@ -143,12 +155,14 @@ export type RedFlag = {
 export type DecisionStrategy = {
   idealCustomerProfile: IdealCustomerProfile;
   targetPersonas: TargetPersona[];
+  budgetOwners: BudgetOwner[];
   whyNowSignals: WhyNowSignal[];
   redFlags: RedFlag[];
 };
 
 export type VendorProfile = {
   id: EntityId;
+  websiteUrl: string;
   vendorName: string;
   productKnowledge: ProductKnowledge;
   decisionStrategy: DecisionStrategy;
