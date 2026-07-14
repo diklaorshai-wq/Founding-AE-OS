@@ -54,15 +54,29 @@ function countByStatus(gates: EvaluationGate[]) {
   );
 }
 
-function calculateConfidence(gates: EvaluationGate[]): number {
-  if (gates.length === 0) {
-    return 0;
+/**
+ * Confidence reflects evidence completeness, not account score. An empty
+ * decision group has no evidence at all, so for confidence purposes it counts
+ * as one missing (not known) assessment rather than being skipped entirely.
+ */
+function calculateConfidence(input: CompanyEvaluationInput): number {
+  const groups = [input.whyThem, input.whyNow, input.whyUs];
+
+  let totalAssessments = 0;
+  let knownAssessments = 0;
+
+  for (const group of groups) {
+    if (group.length === 0) {
+      totalAssessments += 1;
+      continue;
+    }
+
+    const { pass, fail } = countByStatus(group);
+    totalAssessments += group.length;
+    knownAssessments += pass + fail;
   }
 
-  const { pass, fail } = countByStatus(gates);
-  const knownCount = pass + fail;
-
-  return Math.round((knownCount / gates.length) * 100);
+  return Math.round((knownAssessments / totalAssessments) * 100);
 }
 
 function collectSupportingEvidence(gates: EvaluationGate[]): string[] {
@@ -128,7 +142,7 @@ export function generateRecommendation(
 ): RecommendationResult {
   const gates = getAllGates(input);
   const decision = resolveDecision(input);
-  const confidence = calculateConfidence(gates);
+  const confidence = calculateConfidence(input);
   const supportingEvidence = collectSupportingEvidence(gates);
 
   return {
