@@ -92,3 +92,20 @@ Ideas leave the Parking Lot only when they become part of an approved sprint.
 - Allow different evidence types to contribute differently to the final recommendation.
 - Support confidence scoring based on evidence quality and consistency.
 - Explain recommendations using weighted evidence rather than static rules.
+
+---
+
+## Engineering Foundation
+
+- Reorganize project documentation into scalable Product, Architecture and Engineering sections.
+- Standardize the local development environment.
+- Define a repeatable bootstrap process for new development machines.
+
+---
+
+##  Sprint 5
+
+Improve Decision Strategy
+
+- Numeric Company Size
+- Reachability Signals

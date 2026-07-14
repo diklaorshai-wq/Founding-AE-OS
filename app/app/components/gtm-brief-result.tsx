@@ -6,6 +6,8 @@ import { GtmBriefPersonaCard } from "./gtm-brief-persona";
 import { GtmBriefSection } from "./gtm-brief-section";
 import { GtmBriefWorkspaceHeader } from "./gtm-brief-workspace-header";
 import { GtmBriefWorkspacePanel } from "./gtm-brief-workspace-panel";
+import { RecommendationCard } from "./RecommendationCard";
+import { generateRecommendation } from "../lib/intelligence/recommendationEngine";
 
 type GtmBriefResultProps = {
   brief: GtmBrief;
@@ -14,7 +16,34 @@ type GtmBriefResultProps = {
 
 export function GtmBriefResult({ brief, workspace = false }: GtmBriefResultProps) {
   const executive = resolveExecutive(brief);
-
+const recommendation = generateRecommendation({
+  companyName: brief.companyName,
+  productName: "GTM Brain",
+  whyThem: [
+    {
+      id: "icp-fit",
+      name: "ICP Fit",
+      status: "pass",
+      evidence: [brief.icpFit],
+    },
+  ],
+  whyNow: [
+    {
+      id: "why-now",
+      name: "Why Now",
+      status: "pass",
+      evidence: [brief.whyNow],
+    },
+  ],
+  whyUs: [
+    {
+      id: "why-us",
+      name: "Why Us",
+      status: "pass",
+      evidence: [brief.whyUs],
+    },
+  ],
+});
   return (
     <article
       className={`w-full overflow-hidden rounded-2xl border border-zinc-200/80 bg-zinc-50/60 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] ${
@@ -27,13 +56,17 @@ export function GtmBriefResult({ brief, workspace = false }: GtmBriefResultProps
       />
 
       <div className="flex flex-col gap-4 p-4 sm:gap-5 sm:p-6">
-        <GtmBriefWorkspacePanel>
-          <GtmBriefExecutiveLayer executive={executive} />
-        </GtmBriefWorkspacePanel>
+      <GtmBriefWorkspacePanel>
+  <GtmBriefExecutiveLayer executive={executive} />
+</GtmBriefWorkspacePanel>
 
-        <p className="px-1 text-xs font-medium tracking-wide text-zinc-500 uppercase">
-          Detailed Brief
-        </p>
+<GtmBriefWorkspacePanel>
+  <RecommendationCard recommendation={recommendation} />
+</GtmBriefWorkspacePanel>
+
+<p className="px-1 text-xs font-medium tracking-wide text-zinc-500 uppercase">
+  Detailed Brief
+</p>
 
         <GtmBriefWorkspacePanel>
           <GtmBriefSection title="Executive Summary">
