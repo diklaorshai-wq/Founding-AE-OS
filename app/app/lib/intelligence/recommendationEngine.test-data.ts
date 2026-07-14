@@ -1,7 +1,6 @@
-import {
-  generateRecommendation,
-  type CompanyEvaluationInput,
-  type RecommendationDecision,
+import type {
+  CompanyEvaluationInput,
+  RecommendationDecision,
 } from "./recommendationEngine";
 
 const highPriorityAccount: CompanyEvaluationInput = {
@@ -201,13 +200,13 @@ const whyNowEmptyStaysMonitor: CompanyEvaluationInput = {
   ],
 };
 
-type Scenario = {
+export type Scenario = {
   input: CompanyEvaluationInput;
   expectedDecision: RecommendationDecision;
   expectedConfidence: number;
 };
 
-const scenarios: Scenario[] = [
+export const scenarios: Scenario[] = [
   { input: highPriorityAccount, expectedDecision: "Invest", expectedConfidence: 100 },
   { input: interestingButNotUrgent, expectedDecision: "Monitor", expectedConfidence: 60 },
   { input: whyThemFailBlocksSkip, expectedDecision: "Skip", expectedConfidence: 100 },
@@ -215,19 +214,3 @@ const scenarios: Scenario[] = [
   { input: whyNowFailStaysMonitor, expectedDecision: "Monitor", expectedConfidence: 100 },
   { input: whyNowEmptyStaysMonitor, expectedDecision: "Monitor", expectedConfidence: 67 },
 ];
-
-for (const { input, expectedDecision, expectedConfidence } of scenarios) {
-  const result = generateRecommendation(input);
-  const decisionMatch = result.decision === expectedDecision;
-  const confidenceMatch = result.confidence === expectedConfidence;
-
-  console.log("Company:", input.companyName);
-  console.log("Expected Decision:", expectedDecision);
-  console.log("Actual Decision:", result.decision);
-  console.log("Decision Match:", decisionMatch);
-  console.log("Expected Confidence:", expectedConfidence);
-  console.log("Actual Confidence:", result.confidence);
-  console.log("Confidence Match:", confidenceMatch);
-  console.log("Business Case:", result.businessCase);
-  console.log("---");
-}
