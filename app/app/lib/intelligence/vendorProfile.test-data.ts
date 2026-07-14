@@ -2,6 +2,7 @@ import type { VendorProfile } from "./vendorProfile";
 
 export const gtmBrainVendorProfile: VendorProfile = {
   id: "gtm-brain",
+  websiteUrl: "https://gtmbrain.example",
   vendorName: "GTM Brain",
   productKnowledge: {
     offering:
@@ -11,11 +12,15 @@ export const gtmBrainVendorProfile: VendorProfile = {
         id: "unstructured-prioritization",
         statement:
           "Enterprise AEs prioritize named accounts using fragmented evidence and inconsistent judgment.",
+        impact:
+          "Account selection is inconsistent, difficult to explain, and dependent on individual instinct.",
       },
       {
         id: "wasted-outbound-time",
         statement:
           "AEs spend scarce outbound time on accounts without enough fit, timing, or vendor relevance.",
+        impact:
+          "Selling capacity is wasted and potentially stronger accounts receive less attention.",
       },
     ],
     desiredOutcomes: [
@@ -156,6 +161,16 @@ export const gtmBrainVendorProfile: VendorProfile = {
           "Owns sales productivity and the consistency of territory execution.",
         firstMeetingAngle:
           "Explore whether AEs apply a consistent standard when choosing accounts for outbound investment.",
+      },
+    ],
+    budgetOwners: [
+      {
+        id: "vp-sales-budget",
+        roleOrFunction: "VP Sales",
+        responsibilities: ["owns", "approves"],
+        relatedPersonaIds: ["vp-sales"],
+        whyItMatters:
+          "Typically owns sales productivity investments and approves tools used across the enterprise sales organization.",
       },
     ],
     whyNowSignals: [
