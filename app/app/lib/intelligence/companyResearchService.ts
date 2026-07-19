@@ -200,6 +200,16 @@ function summarizeVendorProfile(vendor: VendorProfile): string {
   listItems("Customer Problems", vendor.productKnowledge.customerProblems, (p) => p.statement);
   listItems("Desired Outcomes", vendor.productKnowledge.desiredOutcomes, (o) => o.statement);
   listItems("Buying Reasons", vendor.productKnowledge.buyingReasons, (r) => r.statement);
+  listItems(
+    "Ideal Customer Profile Criteria",
+    vendor.decisionStrategy.idealCustomerProfile.criteria,
+    (c) => c.description,
+  );
+  listItems(
+    "Ideal Customer Examples",
+    vendor.decisionStrategy.idealCustomerProfile.examples,
+    (e) => `${e.companyName} — ${e.rationale}`,
+  );
   listItems("Capabilities", vendor.productKnowledge.capabilities, (c) => `${c.name} — ${c.description}`);
   listItems("Use Cases", vendor.productKnowledge.useCases, (u) => `${u.name} — ${u.description}`);
   listItems("Common Alternatives", vendor.productKnowledge.commonAlternatives, (a) => `${a.name} — ${a.description}`);
@@ -238,9 +248,9 @@ ${aggregatedSources || "(no sources were provided)"}
 Extract and return:
 - "companyIdentity": the company's "name" and primary "url", as stated in the sources.
 - "companyCharacteristics": a short "description" of what the company does, whether it is "isMultiCloud" (best-effort boolean; false if there is no evidence either way), and a "dataScaleDescription" of its data footprint.
-- "relevantBusinessEvidence": findings connected to the vendor's Customer Problems, Desired Outcomes, or Buying Reasons above (Why Them). You are also explicitly permitted to connect a finding here to a Firmographic Disqualifier, or to a Vendor Red Flag whose "affects" list includes "whyThem".
+- "relevantBusinessEvidence": findings connected to the vendor's Customer Problems, Desired Outcomes, Buying Reasons, Ideal Customer Profile Criteria, or Ideal Customer Examples above (Why Them). You are also explicitly permitted to connect a finding here to a Firmographic Disqualifier, or to a Vendor Red Flag whose "affects" list includes "whyThem".
 - "whyNowEvidence": findings connected to the vendor's Why Now Signals above (Why Now) ONLY. A general company event is not automatically a Why Now signal — it must be relevant to this specific Vendor Profile. NEVER connect a finding here to a Firmographic Disqualifier or a Vendor Red Flag — those two categories must never appear in "whyNowEvidence".
-- "whyUsEvidence": findings connected to the vendor's Capabilities, Use Cases, Common Alternatives, or Relevant Differentiation above (Why Us). You are also explicitly permitted to connect a finding here to a Vendor Red Flag whose "affects" list includes "whyUs".
+- "whyUsEvidence": findings connected to the vendor's Capabilities, Use Cases, Proof Points, Relevant Differentiation, or Common Alternatives above (Why Us). You are also explicitly permitted to connect a finding here to a Vendor Red Flag whose "affects" list includes "whyUs".
 - "relevantRoles": role or title strings at the company relevant to the vendor's Target Personas or Budget Owners above.
 - "redFlags": plain-text conditions observed at the company that caution against or disqualify pursuing it.
 

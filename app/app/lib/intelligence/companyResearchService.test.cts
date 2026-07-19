@@ -152,6 +152,103 @@ test("researchCompanyContent: the prompt renders Firmographic Disqualifiers and 
   assert.match(capturedPrompt, /must NEVER be connected through "whyNowEvidence"/);
 });
 
+test("researchCompanyContent: the prompt renders Ideal Customer Profile Criteria and Ideal Customer Examples with their stable ids", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyContent([websiteSource], gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(capturedPrompt, /Ideal Customer Profile Criteria/);
+  assert.match(capturedPrompt, /named-enterprise-accounts/);
+  assert.match(capturedPrompt, /complex-outbound-decision/);
+  assert.match(capturedPrompt, /Ideal Customer Examples/);
+  assert.match(capturedPrompt, /snowflake-example/);
+  assert.match(capturedPrompt, /Snowflake/);
+});
+
+test("researchCompanyContent: the prompt explicitly routes Ideal Customer Profile Criteria and Examples to relevantBusinessEvidence", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyContent([websiteSource], gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(
+    capturedPrompt,
+    /"relevantBusinessEvidence": findings connected to the vendor's Customer Problems, Desired Outcomes, Buying Reasons, Ideal Customer Profile Criteria, or Ideal Customer Examples above \(Why Them\)/,
+  );
+});
+
+test("researchCompanyContent: the prompt explicitly routes Proof Points to whyUsEvidence", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyContent([websiteSource], gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(capturedPrompt, /Proof Points/);
+  assert.match(capturedPrompt, /engine-v1-scenarios/);
+  assert.match(
+    capturedPrompt,
+    /"whyUsEvidence": findings connected to the vendor's Capabilities, Use Cases, Proof Points, Relevant Differentiation, or Common Alternatives above \(Why Us\)/,
+  );
+});
+
+test("researchCompanyContent: existing Firmographic Disqualifier, Red Flag, Common Alternative, and decisionImpact instructions remain present", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyContent([websiteSource], gtmBrainVendorProfile, undefined, { call });
+
+  // Firmographic Disqualifier / Red Flag instructions (Contract Alignment).
+  assert.match(capturedPrompt, /explicitly permitted to connect a finding here to a Firmographic Disqualifier/);
+  assert.match(capturedPrompt, /Vendor Red Flag whose "affects" list includes "whyThem"/);
+  assert.match(capturedPrompt, /Vendor Red Flag whose "affects" list includes "whyUs"/);
+  // decisionImpact instructions, including the Common Alternative sub-rule.
+  assert.match(capturedPrompt, /"decisionImpact" — REQUIRED on every single finding/);
+  assert.match(capturedPrompt, /"supportive": the finding strengthens the specific decision group/);
+  assert.match(capturedPrompt, /"contradictory": the finding weakens or contradicts that decision group/);
+  assert.match(capturedPrompt, /"neutral": the finding provides useful context only/);
+  assert.match(capturedPrompt, /For a finding connected to a Common Alternative specifically/);
+});
+
+test("researchCompanyContent: the strict response schema remains unchanged and is still the only schema sent to Gemini", async () => {
+  let capturedSchema: unknown;
+  const call = async ({ responseJsonSchema }: { responseJsonSchema: unknown }) => {
+    capturedSchema = responseJsonSchema;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyContent([websiteSource], gtmBrainVendorProfile, undefined, { call });
+
+  const schema = capturedSchema as {
+    properties?: Record<string, { description?: string }>;
+  };
+  assert.strictEqual(typeof schema, "object");
+  assert.ok(schema.properties?.relevantBusinessEvidence, 'expected a "relevantBusinessEvidence" property');
+  assert.ok(schema.properties?.whyNowEvidence, 'expected a "whyNowEvidence" property');
+  assert.ok(schema.properties?.whyUsEvidence, 'expected a "whyUsEvidence" property');
+  // These schema-level descriptions are untouched by the prompt-only coverage fix.
+  assert.match(
+    schema.properties?.relevantBusinessEvidence?.description ?? "",
+    /Customer Problems, Desired Outcomes, Buying Reasons, Firmographic Disqualifiers, or Red Flags affecting whyThem/,
+  );
+  assert.match(
+    schema.properties?.whyUsEvidence?.description ?? "",
+    /Capabilities, Use Cases, Common Alternatives, Relevant Differentiation, or Red Flags affecting whyUs/,
+  );
+});
+
 test("researchCompanyContent: a malformed individual finding is dropped while valid sibling findings in the same array are preserved", async () => {
   const validFinding = validMockOutput.relevantBusinessEvidence[0];
   const malformedFinding = {
