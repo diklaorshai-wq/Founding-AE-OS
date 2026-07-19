@@ -1,0 +1,10 @@
+# Secrets. Never commit environment files (except a checked-in example).
+.env
+.env.*
+!.env.example
+
+# Archives / project dumps. These are ad-hoc local backups, not source.
+*.zip
+
+# macOS
+.DS_Store

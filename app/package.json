@@ -7,12 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test \"app/lib/intelligence/**/*.test.cts\""
+    "test": "node --test \"app/lib/intelligence/**/*.test.cts\"",
+    "smoke:gemini": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-gemini.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.12.0",
     "next": "16.2.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

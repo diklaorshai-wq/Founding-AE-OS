@@ -10,6 +10,13 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    // Enabled so relative imports can use explicit ".ts" extensions where a
+    // file is loaded both by Next's bundler and directly by Node (`node
+    // --test`, standalone scripts) - Node's ESM loader requires the
+    // extension on relative specifiers, which this otherwise forbids. Only
+    // valid alongside "noEmit" (already set above), which this project has
+    // regardless since Next.js - not tsc - performs the actual emit.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
@@ -30,5 +37,15 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // Standalone dev scripts run directly by Node, not bundled or served by
+    // Next.js, so they are kept out of the app's checked build graph.
+    "scripts",
+    // Test files run directly via `node --test`, not bundled by Next.js.
+    // Existing tests use the ".test.cts" extension, which this "include"
+    // list never matched in the first place; ".test.ts" files are excluded
+    // here for the same reason.
+    "**/*.test.ts"
+  ]
 }

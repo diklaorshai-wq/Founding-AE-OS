@@ -14,11 +14,56 @@ function checkReferences(
   }
 }
 
+/**
+ * Reports every id used more than once across all 15 Vendor Profile item
+ * sub-collections — a Vendor Item ID must be globally unique across the
+ * entire Vendor Profile, not just unique within its own sub-collection
+ * (Contract Alignment). The top-level `VendorProfile.id` (which identifies
+ * the vendor itself, not an item inside a sub-collection) is intentionally
+ * out of scope here. This only reports errors; it does not throw, and does
+ * not itself block Matching — a caller must check for a non-empty result.
+ */
+function checkGlobalIdUniqueness(errors: string[], profile: VendorProfile): void {
+  const knowledge = profile.productKnowledge;
+  const strategy = profile.decisionStrategy;
+
+  const allIds: EntityId[] = [
+    ...knowledge.customerProblems.map(({ id }) => id),
+    ...knowledge.desiredOutcomes.map(({ id }) => id),
+    ...knowledge.buyingReasons.map(({ id }) => id),
+    ...knowledge.capabilities.map(({ id }) => id),
+    ...knowledge.useCases.map(({ id }) => id),
+    ...knowledge.commonAlternatives.map(({ id }) => id),
+    ...knowledge.relevantDifferentiation.map(({ id }) => id),
+    ...knowledge.proofPoints.map(({ id }) => id),
+    ...strategy.idealCustomerProfile.criteria.map(({ id }) => id),
+    ...strategy.idealCustomerProfile.examples.map(({ id }) => id),
+    ...strategy.idealCustomerProfile.firmographicDisqualifiers.map(({ id }) => id),
+    ...strategy.targetPersonas.map(({ id }) => id),
+    ...strategy.budgetOwners.map(({ id }) => id),
+    ...strategy.whyNowSignals.map(({ id }) => id),
+    ...strategy.redFlags.map(({ id }) => id),
+  ];
+
+  const occurrences = new Map<EntityId, number>();
+  for (const id of allIds) {
+    occurrences.set(id, (occurrences.get(id) ?? 0) + 1);
+  }
+
+  for (const [id, count] of occurrences) {
+    if (count > 1) {
+      errors.push(`Duplicate Vendor Item ID "${id}" is used ${count} times across the Vendor Profile.`);
+    }
+  }
+}
+
 /** Validates links inside a Vendor Profile without evaluating an account. */
 export function validateVendorProfile(profile: VendorProfile): string[] {
   const errors: string[] = [];
   const knowledge = profile.productKnowledge;
   const strategy = profile.decisionStrategy;
+
+  checkGlobalIdUniqueness(errors, profile);
 
   const problemIds = new Set(knowledge.customerProblems.map(({ id }) => id));
   const outcomeIds = new Set(knowledge.desiredOutcomes.map(({ id }) => id));
