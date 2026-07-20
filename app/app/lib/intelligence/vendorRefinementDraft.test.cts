@@ -4,58 +4,145 @@ const assert = require("node:assert/strict");
 
 const {
   buildRefinementDraft,
+  buildValuePropositionPreview,
   validateRefinementDraft,
   createBlankCustomerProblem,
   createBlankDesiredOutcome,
+  createBlankBuyingReason,
   createBlankCapability,
+  createBlankUseCase,
+  createBlankCommonAlternative,
+  createBlankRelevantDifferentiation,
+  createBlankProofPoint,
+  createBlankIcpCriterion,
+  createBlankIcpExample,
+  createBlankFirmographicDisqualifier,
   createBlankWhyNowSignal,
   createBlankRedFlag,
+  removeCustomerProblem,
+  removeDesiredOutcome,
+  removeCapability,
+  removeUseCase,
+  removeCommonAlternative,
+  removeIcpCriterion,
+  toggleReferenceId,
   parseIdList,
   formatIdList,
 } = require("./vendorRefinementDraft.ts");
+const { validateVendorProfile } = require("./vendorProfileValidation.ts");
 
-/** Mimics the shape `researchVendorContent` (Step A) returns. */
-const stepAOutput = {
+/** Full mapper-driving draft shaped like researchVendorFromUrl output. */
+const fullResearchDraft = {
+  id: "vendor-gtmbrain-example",
+  websiteUrl: "https://gtmbrain.example",
+  vendorName: "GTM Brain",
   productKnowledge: {
     offering: "An outbound decision workspace for Enterprise AEs.",
     customerProblems: [
-      { id: "unstructured-prioritization", statement: "AEs prioritize with fragmented evidence.", impact: "Inconsistent selection." },
-    ],
-    desiredOutcomes: [
-      { id: "focus-ae-time", statement: "Focus AE time on the right accounts.", problemIds: ["unstructured-prioritization"] },
-    ],
-    buyingReasons: [],
-    capabilities: [
       {
-        id: "evidence-based-evaluation",
-        name: "Evidence-based evaluation",
-        description: "Organizes evidence into decision groups.",
-        problemIds: ["unstructured-prioritization"],
-        outcomeIds: ["focus-ae-time"],
+        id: "problem-unstructured-prioritization",
+        statement: "AEs prioritize with fragmented evidence.",
+        impact: "Inconsistent selection.",
       },
     ],
-    useCases: [],
-    commonAlternatives: [],
-    relevantDifferentiation: [],
-    proofPoints: [],
+    desiredOutcomes: [
+      {
+        id: "outcome-focus-ae-time",
+        statement: "Focus AE time on the right accounts.",
+        problemIds: ["problem-unstructured-prioritization"],
+      },
+    ],
+    buyingReasons: [
+      {
+        id: "buying-reason-protect-capacity",
+        statement: "Protect scarce outbound capacity.",
+        outcomeIds: ["outcome-focus-ae-time"],
+      },
+    ],
+    capabilities: [
+      {
+        id: "capability-evidence-evaluation",
+        name: "Evidence-based evaluation",
+        description: "Organizes evidence into decision groups.",
+        problemIds: ["problem-unstructured-prioritization"],
+        outcomeIds: ["outcome-focus-ae-time"],
+      },
+    ],
+    useCases: [
+      {
+        id: "use-case-territory-planning",
+        name: "Territory planning",
+        description: "Decide which named accounts deserve outbound.",
+        problemIds: ["problem-unstructured-prioritization"],
+        outcomeIds: ["outcome-focus-ae-time"],
+        capabilityIds: ["capability-evidence-evaluation"],
+      },
+    ],
+    commonAlternatives: [
+      {
+        id: "alternative-spreadsheets",
+        name: "Spreadsheets",
+        description: "Manual tracking.",
+      },
+    ],
+    relevantDifferentiation: [
+      {
+        id: "differentiation-decision-groups",
+        statement: "Structures evidence into decision groups.",
+        alternativeIds: ["alternative-spreadsheets"],
+        problemIds: ["problem-unstructured-prioritization"],
+        outcomeIds: ["outcome-focus-ae-time"],
+      },
+    ],
+    proofPoints: [
+      {
+        id: "proof-point-pilot",
+        summary: "Pilot AE team cut wasted outreach.",
+        outcomeIds: ["outcome-focus-ae-time"],
+        useCaseIds: ["use-case-territory-planning"],
+      },
+    ],
   },
   decisionStrategy: {
-    idealCustomerProfile: { criteria: [], examples: [], firmographicDisqualifiers: [] },
+    idealCustomerProfile: {
+      criteria: [
+        {
+          id: "icp-criterion-named-account-motion",
+          description: "Runs a named-account enterprise selling motion.",
+        },
+      ],
+      examples: [
+        {
+          id: "icp-example-acme",
+          companyName: "Acme Enterprise",
+          rationale: "Large AE org.",
+          criterionIds: ["icp-criterion-named-account-motion"],
+          relationship: "example-only",
+        },
+      ],
+      firmographicDisqualifiers: [
+        {
+          id: "firmographic-disqualifier-smb-only",
+          condition: "SMB-only with no named accounts.",
+          whyItMatters: "Product targets enterprise prioritization.",
+        },
+      ],
+    },
     targetPersonas: [],
     budgetOwners: [],
     whyNowSignals: [
       {
-        id: "new-territories",
+        id: "why-now-signal-new-territories",
         signal: "Sales org reallocates enterprise territories.",
         whyItMatters: "AEs must decide fast.",
-        problemIds: ["unstructured-prioritization"],
-        outcomeIds: ["focus-ae-time"],
+        problemIds: ["problem-unstructured-prioritization"],
+        outcomeIds: ["outcome-focus-ae-time"],
         firstMeetingAngle: "Discuss new territory prioritization.",
       },
     ],
     redFlags: [
       {
-        id: "no-named-account-motion",
+        id: "red-flag-no-named-account-motion",
         condition: "Does not use named-account enterprise selling.",
         whyItMatters: "GTM Brain targets judgment-intensive prioritization.",
         severity: "disqualifying",
@@ -65,123 +152,254 @@ const stepAOutput = {
   },
 };
 
-test("buildRefinementDraft: layers Step A's partial output onto a structurally complete, empty VendorProfile", () => {
-  const draft = buildRefinementDraft(stepAOutput, {
-    id: "gtm-brain",
-    websiteUrl: "https://gtmbrain.example",
-    vendorName: "GTM Brain",
-  });
+test("buildRefinementDraft: represents every V1 mapper-driving collection from research", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
 
-  assert.strictEqual(draft.id, "gtm-brain");
-  assert.strictEqual(draft.websiteUrl, "https://gtmbrain.example");
   assert.strictEqual(draft.vendorName, "GTM Brain");
-  assert.strictEqual(draft.productKnowledge.offering, stepAOutput.productKnowledge.offering);
-  assert.deepStrictEqual(draft.productKnowledge.customerProblems, stepAOutput.productKnowledge.customerProblems);
-  assert.deepStrictEqual(draft.decisionStrategy.redFlags, stepAOutput.decisionStrategy.redFlags);
-
-  // Fields Step A never touches must still be present, valid, and empty.
-  assert.deepStrictEqual(draft.productKnowledge.useCases, []);
-  assert.deepStrictEqual(draft.decisionStrategy.targetPersonas, []);
-  assert.deepStrictEqual(draft.decisionStrategy.idealCustomerProfile, {
-    criteria: [],
-    examples: [],
-    firmographicDisqualifiers: [],
-  });
+  assert.strictEqual(draft.websiteUrl, "https://gtmbrain.example");
+  assert.strictEqual(draft.productKnowledge.offering, fullResearchDraft.productKnowledge.offering);
+  assert.strictEqual(draft.productKnowledge.customerProblems.length, 1);
+  assert.strictEqual(draft.productKnowledge.desiredOutcomes.length, 1);
+  assert.strictEqual(draft.productKnowledge.buyingReasons.length, 1);
+  assert.strictEqual(draft.productKnowledge.capabilities.length, 1);
+  assert.strictEqual(draft.productKnowledge.useCases.length, 1);
+  assert.strictEqual(draft.productKnowledge.commonAlternatives.length, 1);
+  assert.strictEqual(draft.productKnowledge.relevantDifferentiation.length, 1);
+  assert.strictEqual(draft.productKnowledge.proofPoints.length, 1);
+  assert.strictEqual(draft.decisionStrategy.idealCustomerProfile.criteria.length, 1);
+  assert.strictEqual(draft.decisionStrategy.idealCustomerProfile.examples.length, 1);
+  assert.strictEqual(draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.length, 1);
+  assert.strictEqual(draft.decisionStrategy.whyNowSignals.length, 1);
+  assert.strictEqual(draft.decisionStrategy.redFlags.length, 1);
+  assert.deepStrictEqual(validateVendorProfile(draft), []);
 });
 
-test("buildRefinementDraft: an empty partial (no AI output at all) still yields a structurally valid draft", () => {
+test("buildRefinementDraft: does not mutate the original input profile", () => {
+  const originalProblemStatement = fullResearchDraft.productKnowledge.customerProblems[0].statement;
+  const draft = buildRefinementDraft(fullResearchDraft);
+
+  draft.productKnowledge.customerProblems[0].statement = "MUTATED";
+  draft.productKnowledge.offering = "MUTATED OFFERING";
+
+  assert.strictEqual(
+    fullResearchDraft.productKnowledge.customerProblems[0].statement,
+    originalProblemStatement,
+  );
+  assert.notStrictEqual(fullResearchDraft.productKnowledge.offering, "MUTATED OFFERING");
+});
+
+test("buildRefinementDraft: an empty partial still yields a structurally valid optional draft", () => {
   const draft = buildRefinementDraft({}, { id: "v1", websiteUrl: "", vendorName: "New Vendor" });
 
   assert.strictEqual(draft.productKnowledge.offering, "");
   assert.deepStrictEqual(draft.productKnowledge.customerProblems, []);
+  assert.deepStrictEqual(draft.productKnowledge.buyingReasons, []);
   assert.deepStrictEqual(draft.decisionStrategy.whyNowSignals, []);
+  assert.deepStrictEqual(draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers, []);
 
   const validation = validateRefinementDraft(draft);
   assert.strictEqual(validation.isValid, true);
   assert.deepStrictEqual(validation.errors, []);
 });
 
-test("validateRefinementDraft: a manually-edited draft with valid cross-references passes validation, ready to save", () => {
-  const draft = buildRefinementDraft(stepAOutput, { id: "gtm-brain", websiteUrl: "", vendorName: "GTM Brain" });
+test("buildValuePropositionPreview: derives read-only summary without inventing or persisting a valueProposition field", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  const preview = buildValuePropositionPreview(draft);
 
-  // Simulate a manual edit from the UI: the AE tweaks the offering text and
-  // adds a brand-new customer problem, referencing it from a new outcome —
-  // exactly the "add manually" flow the UI exposes via the blank-row
-  // factories below.
-  draft.productKnowledge.offering = "An AE-edited description of the offering.";
-  const newProblem = createBlankCustomerProblem();
-  newProblem.statement = "Manually added problem";
-  newProblem.impact = "Manually added impact";
-  draft.productKnowledge.customerProblems.push(newProblem);
+  assert.ok(preview.intendedCustomer.some((item) => item.includes("named-account")));
+  assert.ok(preview.topProblems.some((item) => item.includes("fragmented")));
+  assert.ok(preview.outcomes.length > 0);
+  assert.ok(preview.buyingReasons.length > 0);
+  assert.ok(preview.capabilitiesAndUseCases.length > 0);
+  assert.ok(preview.differentiationAndProof.length > 0);
+  assert.equal("valueProposition" in draft, false);
+  assert.equal("valueProposition" in draft.productKnowledge, false);
+});
 
-  const newOutcome = createBlankDesiredOutcome();
-  newOutcome.statement = "Manually added outcome";
-  newOutcome.problemIds = [newProblem.id];
-  draft.productKnowledge.desiredOutcomes.push(newOutcome);
+test("createBlank* factories: category-prefixed unique IDs for every mapper collection", () => {
+  const factories = [
+    [createBlankCustomerProblem(), "problem-"],
+    [createBlankDesiredOutcome(), "outcome-"],
+    [createBlankBuyingReason(), "buying-reason-"],
+    [createBlankCapability(), "capability-"],
+    [createBlankUseCase(), "use-case-"],
+    [createBlankCommonAlternative(), "alternative-"],
+    [createBlankRelevantDifferentiation(), "differentiation-"],
+    [createBlankProofPoint(), "proof-point-"],
+    [createBlankIcpCriterion(), "icp-criterion-"],
+    [createBlankIcpExample(), "icp-example-"],
+    [createBlankFirmographicDisqualifier(), "firmographic-disqualifier-"],
+    [createBlankWhyNowSignal(), "why-now-signal-"],
+    [createBlankRedFlag(), "red-flag-"],
+  ];
 
+  const ids = new Set();
+  for (const [item, prefix] of factories) {
+    assert.ok(item.id.startsWith(prefix), `expected ${prefix}, got ${item.id}`);
+    assert.equal(ids.has(item.id), false);
+    ids.add(item.id);
+  }
+
+  const redFlag = createBlankRedFlag();
+  assert.strictEqual(redFlag.severity, "cautionary");
+  assert.deepStrictEqual(redFlag.affectedDecisionGroups, []);
+
+  const second = createBlankCustomerProblem();
+  assert.notStrictEqual(factories[0][0].id, second.id);
+});
+
+test("editing preserves item IDs; adding creates a new unique ID", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  const originalId = draft.productKnowledge.customerProblems[0].id;
+
+  draft.productKnowledge.customerProblems[0].statement = "Edited statement";
+  assert.strictEqual(draft.productKnowledge.customerProblems[0].id, originalId);
+
+  const added = createBlankCustomerProblem();
+  added.statement = "New problem";
+  draft.productKnowledge.customerProblems.push(added);
+
+  assert.notStrictEqual(added.id, originalId);
+  assert.ok(added.id.startsWith("problem-"));
+  assert.strictEqual(draft.productKnowledge.customerProblems.length, 2);
+});
+
+test("removeCustomerProblem: strips dangling references and preserves unrelated data", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  const problemId = "problem-unstructured-prioritization";
+  const next = removeCustomerProblem(draft, problemId);
+
+  assert.deepStrictEqual(next.productKnowledge.customerProblems, []);
+  assert.deepStrictEqual(next.productKnowledge.desiredOutcomes[0].problemIds, []);
+  assert.deepStrictEqual(next.productKnowledge.capabilities[0].problemIds, []);
+  assert.deepStrictEqual(next.productKnowledge.useCases[0].problemIds, []);
+  assert.deepStrictEqual(next.productKnowledge.relevantDifferentiation[0].problemIds, []);
+  assert.deepStrictEqual(next.decisionStrategy.whyNowSignals[0].problemIds, []);
+
+  // Unrelated collections and sibling fields survive.
+  assert.strictEqual(next.productKnowledge.offering, draft.productKnowledge.offering);
+  assert.strictEqual(next.productKnowledge.capabilities[0].id, "capability-evidence-evaluation");
+  assert.deepStrictEqual(next.productKnowledge.capabilities[0].outcomeIds, ["outcome-focus-ae-time"]);
+  assert.strictEqual(next.decisionStrategy.redFlags[0].severity, "disqualifying");
+  assert.deepStrictEqual(next.decisionStrategy.redFlags[0].affectedDecisionGroups, ["whyThem"]);
+
+  // Original draft untouched.
+  assert.strictEqual(draft.productKnowledge.customerProblems.length, 1);
+  assert.deepStrictEqual(validateVendorProfile(next), []);
+});
+
+test("removeDesiredOutcome / removeCapability / removeUseCase / removeCommonAlternative / removeIcpCriterion clean dependents", () => {
+  let draft = buildRefinementDraft(fullResearchDraft);
+
+  draft = removeDesiredOutcome(draft, "outcome-focus-ae-time");
+  assert.deepStrictEqual(draft.productKnowledge.desiredOutcomes, []);
+  assert.deepStrictEqual(draft.productKnowledge.buyingReasons[0].outcomeIds, []);
+  assert.deepStrictEqual(draft.productKnowledge.proofPoints[0].outcomeIds, []);
+
+  draft = removeCapability(draft, "capability-evidence-evaluation");
+  assert.deepStrictEqual(draft.productKnowledge.capabilities, []);
+  assert.deepStrictEqual(draft.productKnowledge.useCases[0].capabilityIds, []);
+
+  draft = removeUseCase(draft, "use-case-territory-planning");
+  assert.deepStrictEqual(draft.productKnowledge.useCases, []);
+  assert.deepStrictEqual(draft.productKnowledge.proofPoints[0].useCaseIds, []);
+
+  draft = removeCommonAlternative(draft, "alternative-spreadsheets");
+  assert.deepStrictEqual(draft.productKnowledge.commonAlternatives, []);
+  assert.deepStrictEqual(draft.productKnowledge.relevantDifferentiation[0].alternativeIds, []);
+
+  draft = removeIcpCriterion(draft, "icp-criterion-named-account-motion");
+  assert.deepStrictEqual(draft.decisionStrategy.idealCustomerProfile.criteria, []);
+  assert.deepStrictEqual(draft.decisionStrategy.idealCustomerProfile.examples[0].criterionIds, []);
+
+  assert.deepStrictEqual(validateVendorProfile(draft), []);
+});
+
+test("red-flag severity and affectedDecisionGroups are preserved through draft build and edit", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  assert.strictEqual(draft.decisionStrategy.redFlags[0].severity, "disqualifying");
+  assert.deepStrictEqual(draft.decisionStrategy.redFlags[0].affectedDecisionGroups, ["whyThem"]);
+
+  draft.decisionStrategy.redFlags[0].severity = "cautionary";
+  draft.decisionStrategy.redFlags[0].affectedDecisionGroups = ["whyThem", "whyUs"];
+
+  const result = validateRefinementDraft(draft);
+  assert.strictEqual(result.isValid, true);
+  assert.strictEqual(result.profile.decisionStrategy.redFlags[0].severity, "cautionary");
+  assert.deepStrictEqual(result.profile.decisionStrategy.redFlags[0].affectedDecisionGroups, [
+    "whyThem",
+    "whyUs",
+  ]);
+});
+
+test("validateRefinementDraft: approved full draft passes validateVendorProfile", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
   const result = validateRefinementDraft(draft);
 
   assert.strictEqual(result.isValid, true);
   assert.deepStrictEqual(result.errors, []);
-  assert.strictEqual(result.profile.productKnowledge.offering, "An AE-edited description of the offering.");
-  assert.strictEqual(result.profile.productKnowledge.customerProblems.length, 2);
+  assert.deepStrictEqual(result.userFacingErrors, []);
+  assert.deepStrictEqual(validateVendorProfile(result.profile), []);
 });
 
-test("validateRefinementDraft: deleting an AI-generated row that other rows still reference surfaces a validation error", () => {
-  const draft = buildRefinementDraft(stepAOutput, { id: "gtm-brain", websiteUrl: "", vendorName: "GTM Brain" });
-
-  // Simulate the UI's "Remove" action deleting the customer problem that
-  // "focus-ae-time" (a desiredOutcome) and "evidence-based-evaluation" (a
-  // capability) still reference by id.
-  draft.productKnowledge.customerProblems = draft.productKnowledge.customerProblems.filter(
-    (problem: { id: string }) => problem.id !== "unstructured-prioritization",
-  );
+test("validateRefinementDraft: invalid references block approval with user-facing errors", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  draft.productKnowledge.desiredOutcomes[0].problemIds = ["problem-does-not-exist"];
 
   const result = validateRefinementDraft(draft);
-
   assert.strictEqual(result.isValid, false);
-  assert.ok(result.errors.some((error: string) => error.includes("unstructured-prioritization")));
+  assert.ok(result.errors.some((error) => error.includes("problem-does-not-exist")));
+  assert.ok(result.userFacingErrors.some((error) => error.includes("no longer exists")));
 });
 
-test("createBlank* factories: each produces a unique id and empty editable fields", () => {
-  const problem = createBlankCustomerProblem();
-  const outcome = createBlankDesiredOutcome();
-  const capability = createBlankCapability();
-  const signal = createBlankWhyNowSignal();
-  const redFlag = createBlankRedFlag();
+test("validateRefinementDraft: duplicate IDs block approval", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  draft.productKnowledge.capabilities.push({
+    ...draft.productKnowledge.capabilities[0],
+    id: draft.productKnowledge.customerProblems[0].id,
+    name: "Colliding capability",
+  });
 
-  assert.ok(problem.id.startsWith("problem-"));
-  assert.strictEqual(problem.statement, "");
-
-  assert.ok(outcome.id.startsWith("outcome-"));
-  assert.deepStrictEqual(outcome.problemIds, []);
-
-  assert.ok(capability.id.startsWith("capability-"));
-  assert.deepStrictEqual(capability.problemIds, []);
-  assert.deepStrictEqual(capability.outcomeIds, []);
-
-  assert.ok(signal.id.startsWith("signal-"));
-  assert.strictEqual(signal.signal, "");
-
-  assert.ok(redFlag.id.startsWith("red-flag-"));
-  assert.strictEqual(redFlag.severity, "cautionary");
-  assert.deepStrictEqual(redFlag.affectedDecisionGroups, []);
-
-  const secondProblem = createBlankCustomerProblem();
-  assert.notStrictEqual(problem.id, secondProblem.id);
+  const result = validateRefinementDraft(draft);
+  assert.strictEqual(result.isValid, false);
+  assert.ok(result.errors.some((error) => error.includes("Duplicate Vendor Item ID")));
+  assert.ok(result.userFacingErrors.some((error) => error.includes("share the same internal id")));
 });
 
-test("parseIdList / formatIdList: round-trip a comma-separated id field the same way the UI edits it", () => {
-  assert.deepStrictEqual(parseIdList("problem-1, problem-2 ,  problem-3"), [
-    "problem-1",
+test("toggleReferenceId: selects and deselects without free-text inference", () => {
+  assert.deepStrictEqual(toggleReferenceId([], "problem-1", true), ["problem-1"]);
+  assert.deepStrictEqual(toggleReferenceId(["problem-1"], "problem-1", true), ["problem-1"]);
+  assert.deepStrictEqual(toggleReferenceId(["problem-1", "problem-2"], "problem-1", false), [
     "problem-2",
-    "problem-3",
   ]);
-  assert.deepStrictEqual(parseIdList(""), []);
-  assert.deepStrictEqual(parseIdList("  ,  ,"), []);
-  assert.strictEqual(formatIdList(["problem-1", "problem-2"]), "problem-1, problem-2");
-  assert.strictEqual(formatIdList([]), "");
+});
 
-  const roundTripped = parseIdList(formatIdList(["a", "b", "c"]));
-  assert.deepStrictEqual(roundTripped, ["a", "b", "c"]);
+test("parseIdList / formatIdList: remain available for compatibility", () => {
+  assert.deepStrictEqual(parseIdList("problem-1, problem-2"), ["problem-1", "problem-2"]);
+  assert.strictEqual(formatIdList(["problem-1", "problem-2"]), "problem-1, problem-2");
+});
+
+test("manual enrichment flow: add linked items and approve", () => {
+  const draft = buildRefinementDraft({});
+  draft.vendorName = "Manual Vendor";
+  draft.websiteUrl = "https://manual.example";
+
+  const problem = createBlankCustomerProblem();
+  problem.statement = "Manual problem";
+  problem.impact = "Impact";
+  draft.productKnowledge.customerProblems.push(problem);
+
+  const outcome = createBlankDesiredOutcome();
+  outcome.statement = "Manual outcome";
+  outcome.problemIds = [problem.id];
+  draft.productKnowledge.desiredOutcomes.push(outcome);
+
+  const reason = createBlankBuyingReason();
+  reason.statement = "Manual buying reason";
+  reason.outcomeIds = [outcome.id];
+  draft.productKnowledge.buyingReasons.push(reason);
+
+  const result = validateRefinementDraft(draft);
+  assert.strictEqual(result.isValid, true);
+  assert.deepStrictEqual(validateVendorProfile(result.profile), []);
 });
