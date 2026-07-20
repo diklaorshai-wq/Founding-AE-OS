@@ -4,41 +4,28 @@
  * job posts, documents) — read against a specific Vendor Profile — into a
  * structurally valid Company Profile.
  *
+ * Also exposes `researchCompanyFromUrl` for the live evaluate path: one
+ * Gemini call with URL Context + the canonical structured schema, returning
+ * a `CanonicalCompanyResearchResult` (success | incomplete | failed).
+ *
  * Model-agnostic and fully isolated:
  * - Does not import or modify `recommendationEngine.ts` or its deterministic
  *   decision logic.
- * - Does not change `types/companyProfile.ts`'s contract shape beyond what
- *   Contract Alignment approved, nor any Zod schema in `types/contracts.ts`.
- *   The AI-facing structured-output schema below is defined and owned
- *   locally, mirroring the convention already used in
- *   `vendorResearchService.ts` and `providers/gemini/index.ts`.
- * - `ResearchOptions.provider` is a plain string union ('gemini' | 'openai'
- *   | 'claude'). Only "gemini" is wired to a real call today; any other
- *   value (or a Gemini call that fails for any reason: missing API key,
- *   network error, malformed JSON, schema violation) degrades to the same
- *   clean, empty `CompanyProfile` rather than throwing, so this function is
- *   always safe to call.
- *
- * Contract Alignment (dual-schema strategy):
- * - `GeminiCompanyResearchOutputSchema` is the STRICT schema. It — and only
- *   it — is used to generate the `responseJsonSchema` sent to Gemini, so
- *   the model is always instructed to produce a full, well-formed finding.
- * - `GeminiCompanyResearchShellSchema` is a LENIENT schema used only to
- *   parse the returned payload: identical for companyIdentity /
- *   companyCharacteristics / relevantRoles / redFlags, but the three
- *   evidence arrays are typed loosely (`z.array(z.unknown())`) so one
- *   malformed finding can never fail the whole payload's parse.
- * - Each raw finding inside the shell's loosely-typed evidence arrays is
- *   then validated INDIVIDUALLY against the strict per-finding schema;
- *   any finding that fails (missing/invalid `decisionImpact`, or any other
- *   defect) is silently dropped, while valid sibling findings and the rest
- *   of the profile are preserved.
+ * - Does not change Zod schemas in `types/contracts.ts` beyond what the
+ *   evaluate API owns. The AI-facing structured-output schema below is
+ *   defined and owned locally.
+ * - `researchCompanyContent` remains the supplied-content path and is
+ *   unchanged in behavior (always returns a CompanyProfile, never throws).
  */
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { VendorProfile } from "./vendorProfile";
 import { createEmptyCompanyProfile } from "./types/companyProfile.ts";
-import type { CompanyEvidenceFinding, CompanyProfile } from "./types/companyProfile.ts";
+import type {
+  CanonicalCompanyResearchResult,
+  CompanyEvidenceFinding,
+  CompanyProfile,
+} from "./types/companyProfile.ts";
 
 /** One raw text source to research, e.g. a scraped website page, a news article, a job posting, or an uploaded document. */
 export type ResearchSourceType = "website" | "document" | "news" | "job_post";
@@ -232,20 +219,9 @@ function summarizeVendorProfile(vendor: VendorProfile): string {
   return lines.length > 0 ? lines.join("\n") : "(this Vendor Profile has no items yet)";
 }
 
-function buildCompanyResearchPrompt(sources: ResearchSource[], vendor: VendorProfile): string {
-  const aggregatedSources = sources
-    .map((source) => `--- Source: ${source.sourceId} (${source.sourceType}) ---\n${source.content}`)
-    .join("\n\n");
-
-  return `You are a meticulous B2B account research analyst. Read the sources below about a target company and build a Company Profile evaluated strictly against the Vendor Profile context, per this vendor's own definition of fit, timing, and differentiation. Never invent facts that are not grounded in the sources, and never fabricate to fill a gap — failure to find information is not proof that the information is false.
-
-Vendor Profile context (the ONLY ids you may cite in "connectedVendorItemId"):
-${summarizeVendorProfile(vendor)}
-
-Sources about the target company:
-${aggregatedSources || "(no sources were provided)"}
-
-Extract and return:
+/** Shared extract/routing/decisionImpact instructions used by both supplied-content and URL research prompts. */
+function buildResearchInstructionsBody(): string {
+  return `Extract and return:
 - "companyIdentity": the company's "name" and primary "url", as stated in the sources.
 - "companyCharacteristics": a short "description" of what the company does, whether it is "isMultiCloud" (best-effort boolean; false if there is no evidence either way), and a "dataScaleDescription" of its data footprint.
 - "relevantBusinessEvidence": findings connected to the vendor's Customer Problems, Desired Outcomes, Buying Reasons, Ideal Customer Profile Criteria, or Ideal Customer Examples above (Why Them). You are also explicitly permitted to connect a finding here to a Firmographic Disqualifier, or to a Vendor Red Flag whose "affects" list includes "whyThem".
@@ -275,9 +251,36 @@ Rules:
 - Do not calculate any score, decision, or recommendation. This is research only, never an evaluation.`;
 }
 
+function buildCompanyResearchPrompt(sources: ResearchSource[], vendor: VendorProfile): string {
+  const aggregatedSources = sources
+    .map((source) => `--- Source: ${source.sourceId} (${source.sourceType}) ---\n${source.content}`)
+    .join("\n\n");
+
+  return `You are a meticulous B2B account research analyst. Read the sources below about a target company and build a Company Profile evaluated strictly against the Vendor Profile context, per this vendor's own definition of fit, timing, and differentiation. Never invent facts that are not grounded in the sources, and never fabricate to fill a gap — failure to find information is not proof that the information is false.
+
+Vendor Profile context (the ONLY ids you may cite in "connectedVendorItemId"):
+${summarizeVendorProfile(vendor)}
+
+Sources about the target company:
+${aggregatedSources || "(no sources were provided)"}
+
+${buildResearchInstructionsBody()}`;
+}
+
+function buildCompanyResearchFromUrlPrompt(domain: string, vendor: VendorProfile): string {
+  return `You are a meticulous B2B account research analyst. Research the company at https://${domain} using the URL context tool on https://${domain} and any linked public pages you need (About, Careers, Newsroom, product pages). Build a Company Profile evaluated strictly against the Vendor Profile context, per this vendor's own definition of fit, timing, and differentiation. Never invent facts that are not grounded in pages you retrieved, and never fabricate to fill a gap — failure to find information is not proof that the information is false.
+
+Vendor Profile context (the ONLY ids you may cite in "connectedVendorItemId"):
+${summarizeVendorProfile(vendor)}
+
+${buildResearchInstructionsBody()}`;
+}
+
 interface ResearchModelCallInput {
   prompt: string;
   responseJsonSchema: unknown;
+  /** When set (URL research), Gemini URL Context is enabled for this single call. */
+  tools?: Array<{ urlContext: Record<string, never> }>;
 }
 
 interface ResearchModelCallResult {
@@ -289,11 +292,12 @@ type ResearchModelCaller = (input: ResearchModelCallInput) => Promise<ResearchMo
 function createLiveResearchModelCaller(apiKey: string, model: string): ResearchModelCaller {
   const client = new GoogleGenAI({ apiKey });
 
-  return async ({ prompt, responseJsonSchema }) => {
+  return async ({ prompt, responseJsonSchema, tools }) => {
     const response = await client.models.generateContent({
       model,
       contents: prompt,
       config: {
+        ...(tools ? { tools } : {}),
         responseMimeType: "application/json",
         responseJsonSchema,
       },
@@ -409,6 +413,48 @@ function sanitizeEvidence(findings: CompanyEvidenceFinding[], validVendorItemIds
   return findings.filter((finding) => validVendorItemIds.has(finding.connectedVendorItemId));
 }
 
+function toSanitizedCompanyProfile(
+  extracted: ResolvedCompanyResearchOutput,
+  vendorProfile: VendorProfile,
+): CompanyProfile {
+  const validVendorItemIds = collectAllVendorItemIds(vendorProfile);
+  return {
+    companyIdentity: extracted.companyIdentity,
+    companyCharacteristics: extracted.companyCharacteristics,
+    relevantBusinessEvidence: sanitizeEvidence(extracted.relevantBusinessEvidence, validVendorItemIds),
+    whyNowEvidence: sanitizeEvidence(extracted.whyNowEvidence, validVendorItemIds),
+    whyUsEvidence: sanitizeEvidence(extracted.whyUsEvidence, validVendorItemIds),
+    relevantRoles: extracted.relevantRoles,
+    redFlags: extracted.redFlags,
+  };
+}
+
+function hasUsableVendorLinkedEvidence(profile: CompanyProfile): boolean {
+  return (
+    profile.relevantBusinessEvidence.length > 0 ||
+    profile.whyNowEvidence.length > 0 ||
+    profile.whyUsEvidence.length > 0
+  );
+}
+
+function sanitizeToDomain(rawUrl: string): string {
+  const withProtocol = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  const parsed = new URL(withProtocol);
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Unsupported URL protocol");
+  }
+  if (!parsed.hostname) {
+    throw new Error("URL is missing a hostname");
+  }
+
+  return parsed.hostname.toLowerCase();
+}
+
+function failedResearch(failureReason: string): CanonicalCompanyResearchResult {
+  return { status: "failed", profileData: null, failureReason };
+}
+
 /**
  * Processes one or more raw text sources about a target company, evaluated
  * against a specific Vendor Profile, into a structurally valid
@@ -439,15 +485,82 @@ export async function researchCompanyContent(
     return emptyProfile;
   }
 
-  const validVendorItemIds = collectAllVendorItemIds(vendorProfile);
+  return toSanitizedCompanyProfile(extracted, vendorProfile);
+}
 
-  return {
-    companyIdentity: extracted.companyIdentity,
-    companyCharacteristics: extracted.companyCharacteristics,
-    relevantBusinessEvidence: sanitizeEvidence(extracted.relevantBusinessEvidence, validVendorItemIds),
-    whyNowEvidence: sanitizeEvidence(extracted.whyNowEvidence, validVendorItemIds),
-    whyUsEvidence: sanitizeEvidence(extracted.whyUsEvidence, validVendorItemIds),
-    relevantRoles: extracted.relevantRoles,
-    redFlags: extracted.redFlags,
-  };
+/**
+ * Researches a company from a submitted URL/domain against a Vendor Profile
+ * using Gemini URL Context and the canonical Company Profile schema.
+ *
+ * Exactly one Gemini call. Never throws. Returns a
+ * `CanonicalCompanyResearchResult` that distinguishes success, incomplete
+ * (valid but no usable vendor-linked findings), and technical failure.
+ *
+ * Does not replace `researchCompanyContent`, which remains the
+ * supplied-content / offline path.
+ */
+export async function researchCompanyFromUrl(
+  urlOrDomain: string,
+  vendorProfile: VendorProfile,
+  options?: ResearchOptions,
+  overrides?: { call?: ResearchModelCaller },
+): Promise<CanonicalCompanyResearchResult> {
+  const provider = options?.provider ?? DEFAULT_PROVIDER;
+
+  let domain: string;
+  try {
+    domain = sanitizeToDomain(urlOrDomain);
+  } catch {
+    return failedResearch("The provided URL could not be parsed as a valid company URL.");
+  }
+
+  if (provider !== "gemini") {
+    return failedResearch(`Research provider "${provider}" is not implemented.`);
+  }
+
+  let caller = overrides?.call;
+  if (!caller) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return failedResearch("GEMINI_API_KEY is not configured.");
+    }
+    caller = createLiveResearchModelCaller(
+      apiKey,
+      process.env.GEMINI_COMPANY_RESEARCH_MODEL ?? DEFAULT_MODEL,
+    );
+  }
+
+  let text: string | undefined;
+  try {
+    const result = await caller({
+      prompt: buildCompanyResearchFromUrlPrompt(domain, vendorProfile),
+      responseJsonSchema: RESEARCH_RESPONSE_JSON_SCHEMA,
+      tools: [{ urlContext: {} }],
+    });
+    text = result.text;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return failedResearch(`Gemini research request failed: ${message}`);
+  }
+
+  if (!text) {
+    return failedResearch("Gemini returned an empty response.");
+  }
+
+  const extracted = parseResearchOutput(text);
+  if (!extracted) {
+    return failedResearch("Gemini's response was not valid JSON or did not match the expected top-level schema.");
+  }
+
+  const profileData = toSanitizedCompanyProfile(extracted, vendorProfile);
+
+  if (!hasUsableVendorLinkedEvidence(profileData)) {
+    return {
+      status: "incomplete",
+      profileData,
+      failureReason: `No usable vendor-linked evidence was found for ${domain}.`,
+    };
+  }
+
+  return { status: "success", profileData };
 }

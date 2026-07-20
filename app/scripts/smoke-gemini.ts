@@ -1,50 +1,23 @@
 /**
- * Standalone, manually-run smoke test for the live Gemini research
- * connection. This makes a REAL network call and consumes a REAL
- * GEMINI_API_KEY — it is intentionally NOT part of `npm test`, which must
- * stay fully offline and deterministic.
+ * Standalone, manually-run smoke test for the live canonical Gemini research
+ * + deterministic matching pipeline. This makes a REAL network call and
+ * consumes a REAL GEMINI_API_KEY — it is intentionally NOT part of
+ * `npm test`, which must stay fully offline and deterministic.
  *
  * Usage (from the `app/` directory):
  *   npm run smoke:gemini -- <domain-or-url> [--json] [--mock]
- * or directly:
- *   node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-gemini.ts <domain-or-url> [--json] [--mock]
  *
- * `--mock` mode (no live internet access to the target site required):
- * The Gemini `urlContext` tool has no mechanism to accept injected/mock page
- * content — it only works by the model fetching a real, live, publicly
- * reachable URL itself, so there is no "payload" to seed it with text. With
- * `--mock`, this script instead disables the URL/Search tools for that one
- * call and passes a small, realistic mock source snapshot (see
- * `MOCK_SOURCE_SNAPSHOTS` below) directly as input text, instructing the
- * model to extract claims only from that text. This still exercises the
- * real Gemini API and the real structured-output schema end to end; it just
- * doesn't depend on Google being able to fetch the target site live.
- * Domain defaults to "vercel.com" (matching the current mock snapshot) when
- * `--mock` is passed without an explicit domain.
+ * `--mock` mode: disables URL Context for that one call and injects a fixed
+ * source snapshot into the prompt (same idea as the previous smoke path).
  *
- * Reads GEMINI_API_KEY (and optional GEMINI_MODEL) from `.env.local` in this
- * package's root, without ever printing the key itself.
+ * Pipeline (mirrors `app/api/evaluate/route.ts`):
+ *   researchCompanyFromUrl → mapEvidenceToDecisionGroups → generateRecommendation
  *
- * NOTE: this file is excluded from `tsconfig.json` (see its `exclude`
- * field) and is NOT type-checked by `next build`. It is executed directly
- * by Node, whose ESM loader requires explicit ".ts" extensions on relative
- * dynamic imports below — a pattern TypeScript's checker otherwise forbids
- * unless "allowImportingTsExtensions" is enabled project-wide, which we
- * intentionally avoid doing just for this one standalone dev script.
+ * Exactly one Gemini call (research). Matching is pure/synchronous.
+ * Prints only safe operational output — never API keys or env values.
  *
- * After research, this script also runs the SAME end-to-end pipeline as
- * `app/api/evaluate/route.ts`: `mapToEvaluationInput` (the Semantic AI
- * Matcher — see `matchingService.ts`) then `generateRecommendation`
- * (Recommendation Engine V1), against the same `gtmBrainVendorProfile`
- * fixture the route currently uses, and prints a `FinalEvaluationResponse`-
- * shaped result (Decision, reasons, Recommended First Move). Neither
- * `matchingService.ts` nor `recommendationEngine.ts` is modified by this
- * script — it only calls their existing exports.
- *
- * NOTE: `--mock` only affects the research step above. The matching step
- * always makes a real, live Gemini Flash Lite call (no tools required, so
- * it isn't subject to the same Search Grounding quota), since exercising
- * the real Semantic AI Matcher end to end is the point of this script.
+ * NOTE: this file is excluded from `tsconfig.json` and is NOT type-checked
+ * by `next build`. Explicit ".ts" extensions are required for Node ESM.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -84,9 +57,7 @@ function sanitizeToDomain(rawInput: string): string {
 }
 
 /**
- * A small, hand-written, illustrative snapshot of publicly-known information
- * — NOT a verified, up-to-date data pull — used only to give the model
- * something concrete to extract structured claims from in `--mock` mode.
+ * A small, hand-written, illustrative snapshot used only in `--mock` mode.
  * Keyed by domain so more fixtures can be added later without new flags.
  */
 const MOCK_SOURCE_SNAPSHOTS: Record<string, string> = {
@@ -109,14 +80,11 @@ function getMockSourceSnapshot(domain: string): string {
 }
 
 /**
- * Builds a `researchCompany` model-call override (see the `overrides.call`
- * parameter on `researchCompany`) that, instead of letting the model use
- * live tools, appends a fixed mock source snapshot to the same prompt and
- * schema the real provider already built, and disables tools entirely.
- * Structurally matches the provider's internal `ModelCaller` type without
- * needing to import it.
+ * Override for `researchCompanyFromUrl`: ignores URL Context tools and
+ * injects a mock source snapshot into the prompt so the strict canonical
+ * schema can still be exercised without live site fetching.
  */
-function createMockModelCaller(domain: string, apiKey: string, model: string) {
+function createMockUrlResearchCaller(domain: string, apiKey: string, model: string) {
   const client = new GoogleGenAI({ apiKey });
   const sourceSnapshot = getMockSourceSnapshot(domain);
 
@@ -126,10 +94,11 @@ function createMockModelCaller(domain: string, apiKey: string, model: string) {
   }: {
     prompt: string;
     responseJsonSchema: unknown;
+    tools?: unknown;
   }) => {
     const augmentedPrompt = `${prompt}
 
-IMPORTANT — MOCK MODE OVERRIDE: no tools (URL context, Google Search) are available in this run. Ignore any instruction above to use them. Instead, extract claims ONLY from the source content below, and cite "https://${domain}" as the sourceUrl for every claim.
+IMPORTANT — MOCK MODE OVERRIDE: no tools (URL context) are available in this run. Ignore any instruction above to use them. Instead, extract findings ONLY from the source content below, and cite "https://${domain}" as the source for every finding.
 
 SOURCE CONTENT (assume this was retrieved from https://${domain}):
 """
@@ -140,8 +109,6 @@ ${sourceSnapshot}
       model,
       contents: augmentedPrompt,
       config: {
-        // Deliberately no `tools` here — this call must not depend on live
-        // internet access to the target site.
         responseMimeType: "application/json",
         responseJsonSchema,
       },
@@ -149,37 +116,6 @@ ${sourceSnapshot}
 
     return { text: response.text };
   };
-}
-
-interface CuratedReasonLike {
-  text: string;
-  evaluationId: string;
-  supportingClaimIds: string[];
-}
-
-/**
- * Mirrors `buildCuratedReasons` in `app/api/evaluate/route.ts` exactly, so
- * this script's printed output matches what the real endpoint would return.
- * Recommendation Engine V1 itself is not modified — this only reshapes its
- * existing `businessCase`/`supportingEvidence` output fields.
- */
-function buildCuratedReasons(
-  businessCase: string,
-  supportingEvidence: string[],
-): CuratedReasonLike[] {
-  const reasons: CuratedReasonLike[] = [
-    { text: businessCase, evaluationId: "business-case", supportingClaimIds: [] },
-  ];
-
-  for (const [index, evidence] of supportingEvidence.slice(0, 3).entries()) {
-    reasons.push({
-      text: evidence,
-      evaluationId: `supporting-evidence-${index + 1}`,
-      supportingClaimIds: [],
-    });
-  }
-
-  return reasons;
 }
 
 async function main(): Promise<void> {
@@ -198,27 +134,20 @@ async function main(): Promise<void> {
 
   if (!process.env.GEMINI_API_KEY) {
     console.error(
-      "GEMINI_API_KEY is not set. Add it to app/.env.local (see app/.env.local for the placeholder) and re-run.",
+      "GEMINI_API_KEY is not set. Add it to app/.env.local and re-run.",
     );
     process.exitCode = 1;
     return;
   }
 
-  // Defaults to "vercel.com" in --mock mode, matching the current mock
-  // snapshot, when no explicit domain is given.
   const domain = sanitizeToDomain(target ?? "vercel.com");
-  const model = process.env.GEMINI_MODEL ?? "gemini-flash-latest";
+  const model = process.env.GEMINI_COMPANY_RESEARCH_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-flash-lite-latest";
 
-  // Imported lazily, after the env var check above, so this script never
-  // constructs a live client with a missing key. Explicit file extensions
-  // are required throughout: Node's ESM loader does not support directory
-  // imports (ERR_UNSUPPORTED_DIR_IMPORT) or extensionless relative
-  // specifiers the way CommonJS require() does.
-  const { researchCompany } = await import(
-    "../app/lib/intelligence/providers/gemini/index.ts"
+  const { researchCompanyFromUrl } = await import(
+    "../app/lib/intelligence/companyResearchService.ts"
   );
-  const { mapToEvaluationInput } = await import(
-    "../app/lib/intelligence/matchingService.ts"
+  const { mapEvidenceToDecisionGroups } = await import(
+    "../app/lib/intelligence/evidenceMatchingService.ts"
   );
   const { generateRecommendation } = await import(
     "../app/lib/intelligence/recommendationEngine.ts"
@@ -229,85 +158,82 @@ async function main(): Promise<void> {
 
   console.log(
     useMock
-      ? `Researching ${domain} with Gemini using a mock source snapshot (no live internet access to ${domain} required)...`
-      : `Researching ${domain} with Gemini (this makes a live network call)...`,
+      ? `Researching ${domain} with canonical URL research using a mock source snapshot...`
+      : `Researching ${domain} with canonical URL research (one live Gemini call with URL Context)...`,
   );
-  const result = await researchCompany(
+
+  const researchResult = await researchCompanyFromUrl(
     domain,
+    gtmBrainVendorProfile,
+    undefined,
     useMock
-      ? { call: createMockModelCaller(domain, process.env.GEMINI_API_KEY, model) }
+      ? { call: createMockUrlResearchCaller(domain, process.env.GEMINI_API_KEY, model) }
       : undefined,
   );
 
-  if (result.status === "failed" || !result.profileData) {
-    // Mirrors app/api/evaluate/route.ts: research must succeed before
-    // matching and Recommendation Engine V1 can run at all.
-    if (asJson) {
-      console.log(JSON.stringify(result, null, 2));
+  if (asJson) {
+    // Safe operational summary only — never dump env or keys.
+    const summary = {
+      researchStatus: researchResult.status,
+      failureReason: researchResult.failureReason,
+      evidenceCounts: researchResult.profileData
+        ? {
+            whyThem: researchResult.profileData.relevantBusinessEvidence.length,
+            whyNow: researchResult.profileData.whyNowEvidence.length,
+            whyUs: researchResult.profileData.whyUsEvidence.length,
+          }
+        : null,
+    };
+    if (researchResult.status === "failed" || !researchResult.profileData) {
+      console.log(JSON.stringify(summary, null, 2));
+      process.exitCode = 1;
       return;
     }
-    console.log(`\nStatus: ${result.status}`);
-    console.log(`Reason: ${result.failureReason ?? "(none reported)"}`);
-    console.log("\nResearch did not produce a company profile, so the matching and Recommendation Engine V1 steps were skipped.");
+
+    const evaluationInput = mapEvidenceToDecisionGroups(
+      researchResult.profileData,
+      gtmBrainVendorProfile,
+    );
+    const recommendation = generateRecommendation(evaluationInput);
+    console.log(
+      JSON.stringify(
+        {
+          ...summary,
+          decision: recommendation.decision,
+          confidence: recommendation.confidence,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log(`\nResearch status: ${researchResult.status}`);
+  if (researchResult.failureReason) {
+    console.log(`Research note: ${researchResult.failureReason}`);
+  }
+
+  if (researchResult.status === "failed" || !researchResult.profileData) {
+    console.log("\nResearch failed technically — matching was not run.");
     process.exitCode = 1;
     return;
   }
 
-  if (!asJson) {
-    console.log(`\nStatus: ${result.status}`);
-    if (result.failureReason) {
-      console.log(`Reason: ${result.failureReason}`);
-    }
-    console.log(`Account name: ${result.profileData.accountName}`);
-    const groups: Array<[string, { claims: unknown[] }]> = [
-      ["firmographicData", result.profileData.firmographicData],
-      ["coreBusinessActivities", result.profileData.coreBusinessActivities],
-      ["corporateAnnouncements", result.profileData.corporateAnnouncements],
-      ["hiringAndRoleTrends", result.profileData.hiringAndRoleTrends],
-      ["observedTechnologies", result.profileData.observedTechnologies],
-    ];
-    for (const [name, group] of groups) {
-      console.log(`  ${name}: ${group.claims.length} claim(s)`);
-    }
-  }
+  const profile = researchResult.profileData;
+  console.log(`Company: ${profile.companyIdentity.name || "(unnamed)"}`);
+  console.log(
+    `Evidence counts — whyThem: ${profile.relevantBusinessEvidence.length}, whyNow: ${profile.whyNowEvidence.length}, whyUs: ${profile.whyUsEvidence.length}`,
+  );
 
-  // NOTE (same stopgap as app/api/evaluate/route.ts): Vendor Onboarding has
-  // no persisted-profile storage yet, so this evaluates against the single
-  // GTM Brain vendor fixture rather than a real, submitted Vendor Profile.
-  console.log("\nMatching against the Semantic AI Matcher (Gemini Flash Lite)...");
-  const evaluationInput = await mapToEvaluationInput(result.profileData, gtmBrainVendorProfile);
+  console.log("\nRunning deterministic mapEvidenceToDecisionGroups (no Gemini call)...");
+  const evaluationInput = mapEvidenceToDecisionGroups(profile, gtmBrainVendorProfile);
   const recommendation = generateRecommendation(evaluationInput);
 
-  const evidenceBundle = [
-    ...result.profileData.firmographicData.claims,
-    ...result.profileData.coreBusinessActivities.claims,
-    ...result.profileData.corporateAnnouncements.claims,
-    ...result.profileData.hiringAndRoleTrends.claims,
-    ...result.profileData.observedTechnologies.claims,
-  ];
-
-  const finalEvaluationResponse = {
-    executionStatus: "success" as const,
-    decisionOutcome: recommendation.decision,
-    curatedReasons: buildCuratedReasons(recommendation.businessCase, recommendation.supportingEvidence),
-    recommendedFirstMove: recommendation.recommendedNextBestAction,
-    evidenceBundle,
-  };
-
-  if (asJson) {
-    console.log(JSON.stringify(finalEvaluationResponse, null, 2));
-    return;
-  }
-
-  console.log("\n--- Final Evaluation Response (app/api/evaluate contract) ---");
-  console.log(`Decision: ${finalEvaluationResponse.decisionOutcome}`);
-  console.log("Reasons:");
-  for (const reason of finalEvaluationResponse.curatedReasons) {
-    console.log(`  - ${reason.text}`);
-  }
-  console.log(`Recommended First Move: ${finalEvaluationResponse.recommendedFirstMove}`);
-  console.log(`\nFull final evaluation response (--json for the raw contract only):`);
-  console.log(JSON.stringify(finalEvaluationResponse, null, 2));
+  console.log("\n--- Recommendation ---");
+  console.log(`Decision: ${recommendation.decision}`);
+  console.log(`Confidence: ${recommendation.confidence}`);
+  console.log(`Next action: ${recommendation.recommendedNextBestAction}`);
 }
 
 main().catch((error) => {

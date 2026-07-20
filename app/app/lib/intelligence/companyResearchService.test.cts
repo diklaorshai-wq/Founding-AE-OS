@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { researchCompanyContent } = require("./companyResearchService.ts");
+const { researchCompanyContent, researchCompanyFromUrl } = require("./companyResearchService.ts");
 const { gtmBrainVendorProfile } = require("./vendorProfile.test-data.ts");
 
 const websiteSource = {
@@ -415,4 +415,182 @@ test("researchCompanyContent: an empty sources array still resolves to a valid, 
       redFlags: [],
     });
   });
+});
+
+const emptyEvidenceMockOutput = {
+  companyIdentity: { name: "EmptyCo", url: "https://empty.example" },
+  companyCharacteristics: {
+    description: "A company with no vendor-linked evidence.",
+    isMultiCloud: false,
+    dataScaleDescription: "",
+  },
+  relevantBusinessEvidence: [],
+  whyNowEvidence: [],
+  whyUsEvidence: [],
+  relevantRoles: [],
+  redFlags: [],
+};
+
+test("researchCompanyFromUrl: sends URL Context tools and the STRICT canonical schema in one model call", async () => {
+  let captured: { responseJsonSchema?: unknown; tools?: unknown; prompt?: string } = {};
+  const call = async (input: {
+    prompt: string;
+    responseJsonSchema: unknown;
+    tools?: Array<{ urlContext: Record<string, never> }>;
+  }) => {
+    captured = input;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  const result = await researchCompanyFromUrl("https://novacart.example", gtmBrainVendorProfile, undefined, {
+    call,
+  });
+
+  assert.strictEqual(result.status, "success");
+  assert.ok(result.profileData);
+  assert.deepStrictEqual(captured.tools, [{ urlContext: {} }]);
+  const serializedSchema = JSON.stringify(captured.responseJsonSchema);
+  assert.match(serializedSchema, /decisionImpact/);
+  assert.match(serializedSchema, /connectedVendorItemId/);
+  assert.match(captured.prompt ?? "", /URL context tool/);
+  assert.match(captured.prompt ?? "", /novacart\.example/);
+  assert.match(captured.prompt ?? "", /unstructured-prioritization/);
+});
+
+test("researchCompanyFromUrl: a valid response with usable findings is success", async () => {
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, {
+    call: mockCallReturning(validMockOutput),
+  });
+
+  assert.strictEqual(result.status, "success");
+  assert.ok(result.profileData);
+  assert.ok(result.profileData.relevantBusinessEvidence.length > 0);
+  assert.strictEqual(result.failureReason, undefined);
+});
+
+test("researchCompanyFromUrl: a valid response with no usable findings after sanitization is incomplete, not failed", async () => {
+  const hallucinatedOnly = {
+    ...emptyEvidenceMockOutput,
+    relevantBusinessEvidence: [
+      {
+        claim: "Linked to a non-existent vendor id.",
+        source: "https://empty.example",
+        date: "2026-01-01",
+        connectedVendorItemId: "does-not-exist",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+    ],
+  };
+
+  const result = await researchCompanyFromUrl("empty.example", gtmBrainVendorProfile, undefined, {
+    call: mockCallReturning(hallucinatedOnly),
+  });
+
+  assert.strictEqual(result.status, "incomplete");
+  assert.ok(result.profileData);
+  assert.deepStrictEqual(result.profileData.relevantBusinessEvidence, []);
+  assert.ok(result.failureReason);
+});
+
+test("researchCompanyFromUrl: a valid empty evidence payload is incomplete with a non-null profile", async () => {
+  const result = await researchCompanyFromUrl("empty.example", gtmBrainVendorProfile, undefined, {
+    call: mockCallReturning(emptyEvidenceMockOutput),
+  });
+
+  assert.strictEqual(result.status, "incomplete");
+  assert.ok(result.profileData);
+  assert.strictEqual(result.profileData.companyIdentity.name, "EmptyCo");
+  assert.notStrictEqual(result.status, "failed");
+});
+
+test("researchCompanyFromUrl: missing API key is failed with null profileData", async () => {
+  await withoutApiKey(async () => {
+    const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile);
+
+    assert.strictEqual(result.status, "failed");
+    assert.strictEqual(result.profileData, null);
+    assert.match(result.failureReason ?? "", /GEMINI_API_KEY/);
+  });
+});
+
+test("researchCompanyFromUrl: malformed JSON is failed with null profileData", async () => {
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, {
+    call: async () => ({ text: "not-json" }),
+  });
+
+  assert.strictEqual(result.status, "failed");
+  assert.strictEqual(result.profileData, null);
+});
+
+test("researchCompanyFromUrl: empty model text is failed with null profileData", async () => {
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, {
+    call: async () => ({ text: undefined }),
+  });
+
+  assert.strictEqual(result.status, "failed");
+  assert.strictEqual(result.profileData, null);
+});
+
+test("researchCompanyFromUrl: a thrown model call is failed with null profileData", async () => {
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, {
+    call: async () => {
+      throw new Error("network unreachable");
+    },
+  });
+
+  assert.strictEqual(result.status, "failed");
+  assert.strictEqual(result.profileData, null);
+  assert.match(result.failureReason ?? "", /network unreachable/);
+});
+
+test("researchCompanyFromUrl: malformed individual findings preserve valid siblings (success)", async () => {
+  const output = {
+    ...validMockOutput,
+    relevantBusinessEvidence: [
+      validMockOutput.relevantBusinessEvidence[0],
+      {
+        claim: "Missing decisionImpact.",
+        source: "https://novacart.example",
+        date: "2026-01-01",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+      },
+    ],
+  };
+
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, {
+    call: mockCallReturning(output),
+  });
+
+  assert.strictEqual(result.status, "success");
+  assert.deepStrictEqual(result.profileData?.relevantBusinessEvidence, [
+    validMockOutput.relevantBusinessEvidence[0],
+  ]);
+});
+
+test("researchCompanyFromUrl: invalid vendor IDs are removed; remaining usable findings still yield success", async () => {
+  const output = {
+    ...validMockOutput,
+    relevantBusinessEvidence: [
+      validMockOutput.relevantBusinessEvidence[0],
+      {
+        claim: "Hallucinated id.",
+        source: "https://novacart.example",
+        date: "2026-01-01",
+        connectedVendorItemId: "not-a-real-id",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+    ],
+  };
+
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, {
+    call: mockCallReturning(output),
+  });
+
+  assert.strictEqual(result.status, "success");
+  assert.deepStrictEqual(result.profileData?.relevantBusinessEvidence, [
+    validMockOutput.relevantBusinessEvidence[0],
+  ]);
 });

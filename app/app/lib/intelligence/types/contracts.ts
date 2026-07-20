@@ -77,12 +77,28 @@ export const ErrorDetailsSchema = z.object({
 });
 export type ErrorDetails = z.infer<typeof ErrorDetailsSchema>;
 
+/**
+ * One item in the evaluate API's `evidenceBundle` (Option A). Built
+ * deterministically from canonical `CompanyEvidenceFinding` arrays plus the
+ * decision group the finding came from. Not a legacy `EvidenceClaim`.
+ */
+export const DecisionEvidenceItemSchema = z.object({
+  decisionGroup: z.enum(["whyThem", "whyNow", "whyUs"]),
+  claim: z.string(),
+  source: z.string(),
+  date: z.string(),
+  connectedVendorItemId: z.string(),
+  natureOfConnection: z.enum(["explicit_fact", "ai_interpretation"]),
+  decisionImpact: z.enum(["supportive", "contradictory", "neutral"]),
+});
+export type DecisionEvidenceItem = z.infer<typeof DecisionEvidenceItemSchema>;
+
 export const FinalEvaluationResponseSchema = z.object({
   executionStatus: z.enum(["success", "failed"]),
   errorDetails: ErrorDetailsSchema.optional(),
   decisionOutcome: z.enum(["Invest", "Monitor", "Skip"]).optional(),
   curatedReasons: z.array(CuratedReasonSchema).optional(),
   recommendedFirstMove: z.string().optional(),
-  evidenceBundle: z.array(EvidenceClaimSchema).optional(),
+  evidenceBundle: z.array(DecisionEvidenceItemSchema).optional(),
 });
 export type FinalEvaluationResponse = z.infer<typeof FinalEvaluationResponseSchema>;

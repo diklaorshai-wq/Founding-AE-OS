@@ -1,8 +1,6 @@
 import { z } from "zod";
-import type { CuratedReason, FinalEvaluationResponse } from "../../lib/intelligence/types/contracts";
-import { researchCompany } from "../../lib/intelligence/providers/gemini";
-import { mapToEvaluationInput } from "../../lib/intelligence/matchingService";
-import { generateRecommendation } from "../../lib/intelligence/recommendationEngine";
+import type { FinalEvaluationResponse } from "../../lib/intelligence/types/contracts";
+import { runCanonicalEvaluate } from "../../lib/intelligence/evaluatePipeline";
 import { gtmBrainVendorProfile } from "../../lib/intelligence/vendorProfile.test-data";
 
 const RequestBodySchema = z.object({
@@ -30,30 +28,6 @@ function sanitizeToDomain(rawUrl: string): string {
   }
 
   return parsed.hostname.toLowerCase();
-}
-
-/**
- * Builds the MVP's "three or four short reasons": the business case plus up
- * to three supporting evidence snippets from Recommendation Engine V1's
- * output. Recommendation Engine V1 is not modified to produce this shape.
- */
-function buildCuratedReasons(
-  businessCase: string,
-  supportingEvidence: string[],
-): CuratedReason[] {
-  const reasons: CuratedReason[] = [
-    { text: businessCase, evaluationId: "business-case", supportingClaimIds: [] },
-  ];
-
-  for (const [index, evidence] of supportingEvidence.slice(0, 3).entries()) {
-    reasons.push({
-      text: evidence,
-      evaluationId: `supporting-evidence-${index + 1}`,
-      supportingClaimIds: [],
-    });
-  }
-
-  return reasons;
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -85,40 +59,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const researchResult = await researchCompany(domain);
-
-    if (researchResult.status === "failed" || !researchResult.profileData) {
-      return toErrorResponse(
-        "RESEARCH_FAILED",
-        researchResult.failureReason ?? "AI research did not return a company profile.",
-        502,
-      );
-    }
-
     // NOTE: Vendor Onboarding has no persisted-profile storage yet (see
     // GTM-BRAIN-PROJECT-STATE.md section 7), so this endpoint evaluates every
     // submitted company against the single GTM Brain vendor fixture until a
     // real Vendor Profile store exists.
-    const evaluationInput = await mapToEvaluationInput(researchResult.profileData, gtmBrainVendorProfile);
-    const recommendation = generateRecommendation(evaluationInput);
-
-    const evidenceBundle = [
-      ...researchResult.profileData.firmographicData.claims,
-      ...researchResult.profileData.coreBusinessActivities.claims,
-      ...researchResult.profileData.corporateAnnouncements.claims,
-      ...researchResult.profileData.hiringAndRoleTrends.claims,
-      ...researchResult.profileData.observedTechnologies.claims,
-    ];
-
-    const response: FinalEvaluationResponse = {
-      executionStatus: "success",
-      decisionOutcome: recommendation.decision,
-      curatedReasons: buildCuratedReasons(recommendation.businessCase, recommendation.supportingEvidence),
-      recommendedFirstMove: recommendation.recommendedNextBestAction,
-      evidenceBundle,
-    };
-
-    return Response.json(response, { status: 200 });
+    const result = await runCanonicalEvaluate(domain, gtmBrainVendorProfile);
+    return Response.json(result.body, { status: result.httpStatus });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return toErrorResponse("INTERNAL_ERROR", message, 500);

@@ -108,3 +108,22 @@ export function createEmptyCompanyProfile(): CompanyProfile {
     redFlags: [],
   };
 }
+
+/**
+ * Outcome of canonical URL (or equivalent) company research. Parallel to the
+ * legacy `CompanyResearchResult` in `contracts.ts`, but `profileData` uses
+ * this module's canonical `CompanyProfile` — never the legacy claim-group
+ * shape. Do not conflate the two types.
+ *
+ * - "success": valid parse with at least one usable vendor-linked finding.
+ * - "incomplete": valid parse whose findings are empty after validation /
+ *   sanitization; `profileData` is still a non-null canonical profile.
+ * - "failed": technical failure; `profileData` is null.
+ */
+export type CanonicalCompanyResearchStatus = "success" | "incomplete" | "failed";
+
+export interface CanonicalCompanyResearchResult {
+  status: CanonicalCompanyResearchStatus;
+  profileData: CompanyProfile | null;
+  failureReason?: string;
+}
