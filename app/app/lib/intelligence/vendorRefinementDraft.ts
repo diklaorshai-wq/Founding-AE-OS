@@ -527,3 +527,237 @@ export function labelForAlternative(item: CommonAlternative): string {
 export function labelForCriterion(item: IdealCustomerCriterion): string {
   return item.description.trim() || "(Untitled criterion)";
 }
+
+export function labelForBuyingReason(item: BuyingReason): string {
+  return item.statement.trim() || "(Untitled buying reason)";
+}
+
+export function labelForProofPoint(item: ProofPoint): string {
+  return item.summary.trim() || "(Untitled proof point)";
+}
+
+export function labelForDifferentiation(item: RelevantDifferentiation): string {
+  return item.statement.trim() || "(Untitled differentiation)";
+}
+
+export function labelForWhyNowSignal(item: WhyNowSignal): string {
+  return item.signal.trim() || "(Untitled signal)";
+}
+
+export function labelForRedFlag(item: RedFlag): string {
+  return item.condition.trim() || "(Untitled red flag)";
+}
+
+export function labelForFirmographicDisqualifier(item: FirmographicDisqualifier): string {
+  return item.condition.trim() || "(Untitled disqualifier)";
+}
+
+export function labelForIcpExample(item: IdealCustomerExample): string {
+  return item.companyName.trim() || "(Untitled example)";
+}
+
+export type RefinementSectionId =
+  | "offering"
+  | "whyThem"
+  | "whyNow"
+  | "whyUs"
+  | "disqualifiers";
+
+export const REFINEMENT_SECTION_ORDER: RefinementSectionId[] = [
+  "offering",
+  "whyThem",
+  "whyNow",
+  "whyUs",
+  "disqualifiers",
+];
+
+function countPart(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/**
+ * Compact accordion header summaries from live collection counts.
+ * Never includes raw IDs.
+ */
+export function buildRefinementSectionSummaries(
+  profile: VendorProfile,
+): Record<RefinementSectionId, string> {
+  const knowledge = profile.productKnowledge;
+  const strategy = profile.decisionStrategy;
+  const icp = strategy.idealCustomerProfile;
+
+  return {
+    offering: [
+      knowledge.offering.trim() ? "1 Offering" : "0 Offerings",
+      countPart(icp.criteria.length, "ICP criterion", "ICP criteria"),
+      countPart(knowledge.capabilities.length, "Capability", "Capabilities"),
+      countPart(knowledge.useCases.length, "Use case", "Use cases"),
+    ].join(" · "),
+    whyThem: [
+      countPart(knowledge.customerProblems.length, "Problem", "Problems"),
+      countPart(knowledge.desiredOutcomes.length, "Outcome", "Outcomes"),
+      countPart(knowledge.buyingReasons.length, "Buying reason", "Buying reasons"),
+      countPart(icp.criteria.length, "ICP criterion", "ICP criteria"),
+      countPart(icp.examples.length, "ICP example", "ICP examples"),
+    ].join(" · "),
+    whyNow: countPart(strategy.whyNowSignals.length, "Signal", "Signals"),
+    whyUs: [
+      countPart(knowledge.capabilities.length, "Capability", "Capabilities"),
+      countPart(knowledge.useCases.length, "Use case", "Use cases"),
+      countPart(knowledge.commonAlternatives.length, "Alternative", "Alternatives"),
+      countPart(knowledge.relevantDifferentiation.length, "Differentiation", "Differentiations"),
+      countPart(knowledge.proofPoints.length, "Proof point", "Proof points"),
+    ].join(" · "),
+    disqualifiers: [
+      countPart(icp.firmographicDisqualifiers.length, "Disqualifier", "Disqualifiers"),
+      countPart(strategy.redFlags.length, "Red flag", "Red flags"),
+    ].join(" · "),
+  };
+}
+
+/**
+ * Maps validation error text to the first major section that likely owns it,
+ * so approval can open that accordion.
+ */
+export function findFirstSectionWithValidationErrors(
+  errors: string[],
+): RefinementSectionId | null {
+  for (const error of errors) {
+    const lower = error.toLowerCase();
+    if (
+      lower.includes("red flag") ||
+      lower.includes("firmographic") ||
+      lower.includes("disqualifier")
+    ) {
+      return "disqualifiers";
+    }
+    if (lower.includes("why now") || lower.includes("signal")) {
+      return "whyNow";
+    }
+    if (
+      lower.includes("capability") ||
+      lower.includes("use case") ||
+      lower.includes("proof") ||
+      lower.includes("differentiation") ||
+      lower.includes("alternative")
+    ) {
+      return "whyUs";
+    }
+    if (
+      lower.includes("problem") ||
+      lower.includes("outcome") ||
+      lower.includes("buying reason") ||
+      lower.includes("icp") ||
+      lower.includes("desired outcome") ||
+      lower.includes("customer problem")
+    ) {
+      return "whyThem";
+    }
+    if (lower.includes("duplicate")) {
+      return "offering";
+    }
+  }
+  return errors.length > 0 ? "offering" : null;
+}
+
+/** Toggle accordion: clicking the open section closes it; otherwise opens the target. */
+export function toggleOpenSection(
+  current: RefinementSectionId | null,
+  target: RefinementSectionId,
+): RefinementSectionId | null {
+  return current === target ? null : target;
+}
+
+/** Toggle a single collection item's expanded editor. */
+export function toggleExpandedItemId(
+  currentExpandedId: string | null | undefined,
+  itemId: string,
+): string | null {
+  return currentExpandedId === itemId ? null : itemId;
+}
+
+/**
+ * User-editable business fields per refinement collection (excludes stable `id`).
+ * Relationship id arrays are included where the UI edits them via pickers.
+ * Primary label/name/text field is always listed first.
+ */
+export const REFINEMENT_COLLECTION_EDITABLE_FIELDS = {
+  offeringIdentity: ["vendorName", "websiteUrl", "offering"],
+  customerProblems: ["statement", "impact"],
+  desiredOutcomes: ["statement", "problemIds"],
+  buyingReasons: ["statement", "outcomeIds"],
+  icpCriteria: ["description"],
+  icpExamples: ["companyName", "rationale", "relationship", "criterionIds"],
+  whyNowSignals: ["signal", "whyItMatters", "firstMeetingAngle", "problemIds", "outcomeIds"],
+  capabilities: ["name", "description", "problemIds", "outcomeIds"],
+  useCases: ["name", "description", "problemIds", "outcomeIds", "capabilityIds"],
+  commonAlternatives: ["name", "description"],
+  relevantDifferentiation: ["statement", "alternativeIds", "problemIds", "outcomeIds"],
+  proofPoints: ["summary", "customerName", "industry", "metric", "outcomeIds", "useCaseIds"],
+  firmographicDisqualifiers: ["condition", "whyItMatters"],
+  redFlags: ["condition", "whyItMatters", "severity", "affectedDecisionGroups"],
+} as const;
+
+export type RefinementCollectionKey = keyof typeof REFINEMENT_COLLECTION_EDITABLE_FIELDS;
+
+/** Primary business field for each collection (never the stable item id). */
+export function primaryEditableFieldForCollection(
+  collection: RefinementCollectionKey,
+): string {
+  return REFINEMENT_COLLECTION_EDITABLE_FIELDS[collection][0];
+}
+
+/** Confirms every V1 mapper-driving collection is present on a draft (possibly empty). */
+export function listMapperDrivingCollectionPresence(profile: VendorProfile): string[] {
+  return [
+    "offering",
+    "customerProblems",
+    "desiredOutcomes",
+    "buyingReasons",
+    "capabilities",
+    "useCases",
+    "commonAlternatives",
+    "relevantDifferentiation",
+    "proofPoints",
+    "icpCriteria",
+    "icpExamples",
+    "firmographicDisqualifiers",
+    "whyNowSignals",
+    "redFlags",
+  ].filter((key) => {
+    switch (key) {
+      case "offering":
+        return typeof profile.productKnowledge.offering === "string";
+      case "customerProblems":
+        return Array.isArray(profile.productKnowledge.customerProblems);
+      case "desiredOutcomes":
+        return Array.isArray(profile.productKnowledge.desiredOutcomes);
+      case "buyingReasons":
+        return Array.isArray(profile.productKnowledge.buyingReasons);
+      case "capabilities":
+        return Array.isArray(profile.productKnowledge.capabilities);
+      case "useCases":
+        return Array.isArray(profile.productKnowledge.useCases);
+      case "commonAlternatives":
+        return Array.isArray(profile.productKnowledge.commonAlternatives);
+      case "relevantDifferentiation":
+        return Array.isArray(profile.productKnowledge.relevantDifferentiation);
+      case "proofPoints":
+        return Array.isArray(profile.productKnowledge.proofPoints);
+      case "icpCriteria":
+        return Array.isArray(profile.decisionStrategy.idealCustomerProfile.criteria);
+      case "icpExamples":
+        return Array.isArray(profile.decisionStrategy.idealCustomerProfile.examples);
+      case "firmographicDisqualifiers":
+        return Array.isArray(
+          profile.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers,
+        );
+      case "whyNowSignals":
+        return Array.isArray(profile.decisionStrategy.whyNowSignals);
+      case "redFlags":
+        return Array.isArray(profile.decisionStrategy.redFlags);
+      default:
+        return false;
+    }
+  });
+}

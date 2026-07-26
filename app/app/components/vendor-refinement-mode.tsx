@@ -1,13 +1,10 @@
 "use client";
 
 /**
- * Checkpoint B: Vendor Profile Refinement Mode.
- *
- * Lets the vendor review, correct, remove, and voluntarily enrich every V1
- * decision-driving collection on the canonical VendorProfile before approval.
- * Persistence is intentionally left to the parent `onApprove` callback.
+ * Vendor Profile Refinement Mode — compact accordion + master/detail editing.
+ * Preserves full canonical VendorProfile editing without changing validation or IDs.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   BuyingReason,
   Capability,
@@ -29,6 +26,7 @@ import type {
 } from "../lib/intelligence/vendorProfile";
 import {
   buildRefinementDraft,
+  buildRefinementSectionSummaries,
   buildValuePropositionPreview,
   createBlankBuyingReason,
   createBlankCapability,
@@ -43,12 +41,20 @@ import {
   createBlankRelevantDifferentiation,
   createBlankUseCase,
   createBlankWhyNowSignal,
+  findFirstSectionWithValidationErrors,
   labelForAlternative,
+  labelForBuyingReason,
   labelForCapability,
   labelForCriterion,
+  labelForDifferentiation,
+  labelForFirmographicDisqualifier,
+  labelForIcpExample,
   labelForOutcome,
   labelForProblem,
+  labelForProofPoint,
+  labelForRedFlag,
   labelForUseCase,
+  labelForWhyNowSignal,
   removeBuyingReason,
   removeCapability,
   removeCommonAlternative,
@@ -64,20 +70,46 @@ import {
   removeWhyNowSignal,
   toggleReferenceId,
   validateRefinementDraft,
+  toggleOpenSection,
+  toggleExpandedItemId,
+  type RefinementSectionId,
   type VendorIdentityDraft,
 } from "../lib/intelligence/vendorRefinementDraft";
 
 export interface VendorRefinementModeProps {
-  /** Draft from research (partial or full canonical VendorProfile). */
   initialProfile: Partial<VendorProfile>;
-  /** Optional identity overlay when not already present on initialProfile. */
   vendorIdentity?: Partial<VendorIdentityDraft>;
-  /** Called only after validation succeeds. Checkpoint B does not persist. */
   onApprove: (profile: VendorProfile) => void | Promise<void>;
 }
 
 const EMPTY_COLLECTION_MESSAGE =
   "No evidence was found during research. Add information if you know it.";
+
+const SECTION_META: Record<
+  RefinementSectionId,
+  { title: string; description: string }
+> = {
+  offering: {
+    title: "1. Offering & Value Proposition",
+    description: "What you sell and how value is framed.",
+  },
+  whyThem: {
+    title: "2. Why Them",
+    description: "Problems, outcomes, buying reasons, and ICP.",
+  },
+  whyNow: {
+    title: "3. Why Now",
+    description: "Timing signals that suggest action now.",
+  },
+  whyUs: {
+    title: "4. Why Us",
+    description: "Capabilities, use cases, alternatives, differentiation, and proof.",
+  },
+  disqualifiers: {
+    title: "5. Disqualifiers & Red Flags",
+    description: "Firmographic disqualifiers and red flags (never Why Now).",
+  },
+};
 
 function TextField({
   label,
@@ -92,13 +124,13 @@ function TextField({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-zinc-700">{label}</span>
+      <span className="mb-0.5 block font-medium text-zinc-700">{label}</span>
       <input
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+        className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
       />
     </label>
   );
@@ -109,7 +141,7 @@ function TextAreaField({
   value,
   onChange,
   placeholder,
-  rows = 2,
+  rows = 3,
 }: {
   label: string;
   value: string;
@@ -118,97 +150,20 @@ function TextAreaField({
   rows?: number;
 }) {
   return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium text-zinc-700">{label}</span>
+    <label className="block text-sm sm:col-span-2">
+      <span className="mb-0.5 block font-medium text-zinc-700">{label}</span>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         rows={rows}
-        className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+        className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
       />
     </label>
   );
 }
 
-function RowCard({
-  onRemove,
-  removeLabel,
-  children,
-}: {
-  onRemove: () => void;
-  removeLabel: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4">
-      <div className="grid gap-3 sm:grid-cols-2">{children}</div>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-xs font-medium text-red-600 hover:text-red-700"
-        >
-          Remove {removeLabel}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({
-  title,
-  description,
-  onAdd,
-  addLabel,
-}: {
-  title: string;
-  description: string;
-  onAdd: () => void;
-  addLabel: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <h3 className="text-sm font-semibold text-zinc-950">{title}</h3>
-        <p className="text-xs text-zinc-500">{description}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="shrink-0 rounded-lg border border-dashed border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-400 hover:text-zinc-900"
-      >
-        + Add {addLabel}
-      </button>
-    </div>
-  );
-}
-
-function EmptyCollectionNotice() {
-  return <p className="text-xs text-zinc-400">{EMPTY_COLLECTION_MESSAGE}</p>;
-}
-
-function FrameworkSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-6 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-5">
-      <header className="space-y-1 border-b border-zinc-200 pb-3">
-        <h2 className="text-base font-semibold text-zinc-950">{title}</h2>
-        <p className="text-sm text-zinc-500">{description}</p>
-      </header>
-      {children}
-    </section>
-  );
-}
-
-function ReferencePicker({
+function CompactReferencePicker({
   label,
   options,
   selectedIds,
@@ -224,47 +179,220 @@ function ReferencePicker({
   if (options.length === 0) {
     return (
       <div className="sm:col-span-2 text-sm">
-        <span className="mb-1 block font-medium text-zinc-700">{label}</span>
+        <span className="mb-0.5 block font-medium text-zinc-700">{label}</span>
         <p className="text-xs text-zinc-400">{emptyHint}</p>
       </div>
     );
   }
 
+  const selected = options.filter((option) => selectedIds.includes(option.id));
+  const available = options.filter((option) => !selectedIds.includes(option.id));
+
   return (
-    <fieldset className="sm:col-span-2 text-sm">
-      <legend className="mb-1 block font-medium text-zinc-700">{label}</legend>
-      <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3">
-        {options.map((option) => (
-          <label key={option.id} className="flex items-start gap-2 text-sm text-zinc-700">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={selectedIds.includes(option.id)}
-              onChange={(event) =>
-                onChange(toggleReferenceId(selectedIds, option.id, event.target.checked))
-              }
-            />
-            <span>{option.label}</span>
-          </label>
+    <div className="sm:col-span-2 space-y-2 text-sm">
+      <span className="block font-medium text-zinc-700">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {selected.length === 0 && (
+          <span className="text-xs text-zinc-400">None selected</span>
+        )}
+        {selected.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(toggleReferenceId(selectedIds, option.id, false))}
+            className="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-300 bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-800"
+            title="Remove relationship"
+          >
+            <span className="truncate">{option.label}</span>
+            <span aria-hidden="true" className="text-zinc-500">
+              ×
+            </span>
+          </button>
         ))}
       </div>
-    </fieldset>
+      {available.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 rounded-md border border-dashed border-zinc-200 bg-white p-2">
+          {available.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onChange(toggleReferenceId(selectedIds, option.id, true))}
+              className="rounded-full border border-zinc-200 px-2.5 py-0.5 text-xs text-zinc-600 hover:border-zinc-400 hover:text-zinc-900"
+            >
+              + {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
-function PreviewList({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) {
-    return null;
-  }
+function CollectionBlock({
+  title,
+  description,
+  addLabel,
+  onAdd,
+  isEmpty,
+  children,
+}: {
+  title: string;
+  description: string;
+  addLabel: string;
+  onAdd: () => void;
+  isEmpty: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{title}</h4>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-zinc-700">
-        {items.slice(0, 4).map((item) => (
-          <li key={`${title}-${item}`}>{item}</li>
-        ))}
-      </ul>
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-950">{title}</h3>
+          <p className="text-xs text-zinc-500">{description}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="shrink-0 rounded-md border border-dashed border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:border-zinc-400 hover:text-zinc-900"
+        >
+          + Add {addLabel}
+        </button>
+      </div>
+      {isEmpty ? (
+        <p className="text-xs text-zinc-400">{EMPTY_COLLECTION_MESSAGE}</p>
+      ) : (
+        <div className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">{children}</div>
+      )}
     </div>
+  );
+}
+
+function ItemRow({
+  primary,
+  secondary,
+  expanded,
+  onToggle,
+  onRemove,
+  removeLabel,
+  children,
+}: {
+  primary: string;
+  secondary?: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+  removeLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white">
+      <div className="flex items-center gap-2 px-3 py-2">
+        {expanded ? (
+          <div className="min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Editing
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={false}
+            className="min-w-0 flex-1 text-left"
+          >
+            <span className="block truncate text-sm font-medium text-zinc-950">{primary}</span>
+            {secondary ? (
+              <span className="block truncate text-xs text-zinc-500">{secondary}</span>
+            ) : null}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onToggle();
+          }}
+          aria-expanded={expanded}
+          className="shrink-0 rounded-md border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-600 hover:border-zinc-300"
+        >
+          {expanded ? "Done" : "Edit"}
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onRemove();
+          }}
+          className="shrink-0 px-1.5 text-xs font-medium text-red-600 hover:text-red-700"
+          aria-label={`Remove ${removeLabel}`}
+        >
+          Remove
+        </button>
+      </div>
+      {expanded && (
+        <div className="grid gap-2.5 border-t border-zinc-100 bg-zinc-50/70 px-3 py-3 sm:grid-cols-2">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccordionSection({
+  sectionId,
+  open,
+  summary,
+  onToggle,
+  highlighted,
+  children,
+}: {
+  sectionId: RefinementSectionId;
+  open: boolean;
+  summary: string;
+  onToggle: () => void;
+  highlighted?: boolean;
+  children: React.ReactNode;
+}) {
+  const meta = SECTION_META[sectionId];
+  const panelId = `refinement-panel-${sectionId}`;
+  const buttonId = `refinement-button-${sectionId}`;
+
+  return (
+    <section
+      className={`overflow-hidden rounded-xl border bg-white ${
+        highlighted ? "border-red-300 ring-1 ring-red-200" : "border-zinc-200"
+      }`}
+    >
+      <h2>
+        <button
+          id={buttonId}
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={onToggle}
+          className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left hover:bg-zinc-50"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-zinc-950">{meta.title}</span>
+            <span className="mt-0.5 block text-xs text-zinc-500">{meta.description}</span>
+            <span className="mt-1 block text-xs font-medium text-zinc-600">{summary}</span>
+          </span>
+          <span className="mt-0.5 shrink-0 text-xs font-medium text-zinc-500" aria-hidden="true">
+            {open ? "Collapse" : "Expand"}
+          </span>
+        </button>
+      </h2>
+      {open && (
+        <div
+          id={panelId}
+          role="region"
+          aria-labelledby={buttonId}
+          className="space-y-5 border-t border-zinc-200 px-4 py-4"
+        >
+          {children}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -279,10 +407,36 @@ export function VendorRefinementMode({
   const [errors, setErrors] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [openSection, setOpenSection] = useState<RefinementSectionId | null>("offering");
+  const [highlightedSection, setHighlightedSection] = useState<RefinementSectionId | null>(null);
+  const [vpExpanded, setVpExpanded] = useState(false);
+  const [expandedItemKeys, setExpandedItemKeys] = useState<Record<string, string | null>>({});
 
   function markDirty(next: VendorProfile) {
     setIsSaved(false);
     setDraft(next);
+  }
+
+  function setExpanded(collectionKey: string, id: string | null) {
+    setExpandedItemKeys((prev) => ({ ...prev, [collectionKey]: id }));
+  }
+
+  function isExpanded(collectionKey: string, id: string): boolean {
+    return expandedItemKeys[collectionKey] === id;
+  }
+
+  function handleToggleSection(section: RefinementSectionId) {
+    setOpenSection((prev) => toggleOpenSection(prev, section));
+    if (highlightedSection === section) {
+      setHighlightedSection(null);
+    }
+  }
+
+  function handleToggleItem(collectionKey: string, itemId: string) {
+    setExpandedItemKeys((prev) => ({
+      ...prev,
+      [collectionKey]: toggleExpandedItemId(prev[collectionKey], itemId),
+    }));
   }
 
   async function handleApprove() {
@@ -291,12 +445,31 @@ export function VendorRefinementMode({
     const result = validateRefinementDraft(draft);
     setErrors(result.userFacingErrors);
 
-    if (result.isValid) {
-      await onApprove(result.profile);
-      setIsSaved(true);
+    if (!result.isValid) {
+      const section = findFirstSectionWithValidationErrors(result.errors);
+      if (section) {
+        setOpenSection(section);
+        setHighlightedSection(section);
+      }
+      setIsSaving(false);
+      return;
     }
+
+    setHighlightedSection(null);
+    await onApprove(result.profile);
+    setIsSaved(true);
     setIsSaving(false);
   }
+
+  const summaries = useMemo(() => buildRefinementSectionSummaries(draft), [draft]);
+  const preview = useMemo(() => buildValuePropositionPreview(draft), [draft]);
+  const previewCount =
+    preview.intendedCustomer.length +
+    preview.topProblems.length +
+    preview.outcomes.length +
+    preview.buyingReasons.length +
+    preview.capabilitiesAndUseCases.length +
+    preview.differentiationAndProof.length;
 
   const problemOptions = draft.productKnowledge.customerProblems.map((item) => ({
     id: item.id,
@@ -323,385 +496,411 @@ export function VendorRefinementMode({
     label: labelForCriterion(item),
   }));
 
-  const preview = buildValuePropositionPreview(draft);
-  const previewHasContent =
-    preview.intendedCustomer.length > 0 ||
-    preview.topProblems.length > 0 ||
-    preview.outcomes.length > 0 ||
-    preview.buyingReasons.length > 0 ||
-    preview.capabilitiesAndUseCases.length > 0 ||
-    preview.differentiationAndProof.length > 0;
-
   return (
-    <section className="mx-auto w-full max-w-3xl space-y-8 p-6">
-      <header className="space-y-1">
+    <section className="mx-auto w-full max-w-7xl space-y-5 px-4 sm:px-6 lg:px-8">
+      <header className="max-w-3xl space-y-1">
         <h1 className="text-xl font-semibold text-zinc-950">Refine Vendor Profile</h1>
         <p className="text-sm text-zinc-500">
-          Review the AI draft from your website. Correct anything inaccurate, remove what does not
-          apply, and add what you know before approving. Empty sections may stay empty.
+          Expand one section at a time. Edit compact rows as needed. Empty collections may stay
+          empty.
         </p>
       </header>
 
-      {/* 1. Offering & Value Proposition */}
-      <FrameworkSection
-        title="1. Offering & Value Proposition"
-        description="What you sell, who it is for, and how value is delivered — summarized from structured fields below."
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <TextField
-            label="Vendor name"
-            value={draft.vendorName}
-            onChange={(value) => markDirty({ ...draft, vendorName: value })}
-          />
-          <TextField
-            label="Website URL"
-            value={draft.websiteUrl}
-            onChange={(value) => markDirty({ ...draft, websiteUrl: value })}
-          />
-        </div>
-        <TextAreaField
-          label="Offering (short product description)"
-          value={draft.productKnowledge.offering}
-          onChange={(value) =>
-            markDirty({
-              ...draft,
-              productKnowledge: { ...draft.productKnowledge, offering: value },
-            })
-          }
-          rows={3}
-        />
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-zinc-950">Value Proposition preview</h3>
-          <p className="mt-1 text-xs text-zinc-500">
-            Read-only summary from ICP, problems, outcomes, buying reasons, capabilities, use cases,
-            differentiation, and proof. Not saved as a separate field.
+      <div className="space-y-3">
+        <AccordionSection
+          sectionId="offering"
+          open={openSection === "offering"}
+          summary={summaries.offering}
+          highlighted={highlightedSection === "offering"}
+          onToggle={() => handleToggleSection("offering")}
+        >
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <TextField
+              label="Vendor name"
+              value={draft.vendorName}
+              onChange={(value) => markDirty({ ...draft, vendorName: value })}
+            />
+            <TextField
+              label="Website URL"
+              value={draft.websiteUrl}
+              onChange={(value) => markDirty({ ...draft, websiteUrl: value })}
+            />
+            <TextAreaField
+              label="Offering (short product description)"
+              value={draft.productKnowledge.offering}
+              onChange={(value) =>
+                markDirty({
+                  ...draft,
+                  productKnowledge: { ...draft.productKnowledge, offering: value },
+                })
+              }
+              rows={3}
+            />
+          </div>
+          <p className="text-xs text-zinc-500">
+            Changes are saved automatically in this draft.
           </p>
-          {previewHasContent ? (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <PreviewList title="Intended customer" items={preview.intendedCustomer} />
-              <PreviewList title="Problems solved" items={preview.topProblems} />
-              <PreviewList title="Outcomes" items={preview.outcomes} />
-              <PreviewList title="Why customers buy" items={preview.buyingReasons} />
-              <PreviewList title="Capabilities & use cases" items={preview.capabilitiesAndUseCases} />
-              <PreviewList title="Differentiation & proof" items={preview.differentiationAndProof} />
-            </div>
-          ) : (
-            <p className="mt-3 text-xs text-zinc-400">
-              Add structured details in the sections below to populate this preview.
-            </p>
-          )}
-        </div>
-      </FrameworkSection>
 
-      {/* 2. Why Them */}
-      <FrameworkSection
-        title="2. Why Them"
-        description="Fit signals: problems, outcomes, buying reasons, and ideal customer profile."
-      >
-        <div className="space-y-3">
-          <SectionHeader
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50">
+            <button
+              type="button"
+              aria-expanded={vpExpanded}
+              onClick={() => setVpExpanded((prev) => !prev)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left"
+            >
+              <span>
+                <span className="block text-sm font-medium text-zinc-900">
+                  Value Proposition preview
+                </span>
+                <span className="block text-xs text-zinc-500">
+                  Read-only summary from structured fields · {previewCount} items
+                </span>
+              </span>
+              <span className="text-xs font-medium text-zinc-500">
+                {vpExpanded ? "Hide" : "Show"}
+              </span>
+            </button>
+            {vpExpanded && (
+              <div className="grid gap-3 border-t border-zinc-200 px-3 py-3 sm:grid-cols-2 lg:grid-cols-3">
+                {(
+                  [
+                    ["Intended customer", preview.intendedCustomer],
+                    ["Problems solved", preview.topProblems],
+                    ["Outcomes", preview.outcomes],
+                    ["Why customers buy", preview.buyingReasons],
+                    ["Capabilities & use cases", preview.capabilitiesAndUseCases],
+                    ["Differentiation & proof", preview.differentiationAndProof],
+                  ] as const
+                ).map(([title, items]) =>
+                  items.length > 0 ? (
+                    <div key={title}>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        {title}
+                      </h4>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-zinc-700">
+                        {items.slice(0, 4).map((item) => (
+                          <li key={`${title}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null,
+                )}
+                {previewCount === 0 && (
+                  <p className="text-xs text-zinc-400 sm:col-span-2">
+                    Add structured details below to populate this preview.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </AccordionSection>
+
+        <AccordionSection
+          sectionId="whyThem"
+          open={openSection === "whyThem"}
+          summary={summaries.whyThem}
+          highlighted={highlightedSection === "whyThem"}
+          onToggle={() => handleToggleSection("whyThem")}
+        >
+          <CollectionBlock
             title="Customer Problems"
             description="Important customer problems your offering addresses."
             addLabel="problem"
-            onAdd={() =>
+            isEmpty={draft.productKnowledge.customerProblems.length === 0}
+            onAdd={() => {
+              const item = createBlankCustomerProblem();
               markDirty({
                 ...draft,
                 productKnowledge: {
                   ...draft.productKnowledge,
-                  customerProblems: [
-                    ...draft.productKnowledge.customerProblems,
-                    createBlankCustomerProblem(),
-                  ],
+                  customerProblems: [...draft.productKnowledge.customerProblems, item],
                 },
-              })
-            }
-          />
-          {draft.productKnowledge.customerProblems.map((problem: CustomerProblem) => (
-            <RowCard
-              key={problem.id}
-              removeLabel="problem"
-              onRemove={() => markDirty(removeCustomerProblem(draft, problem.id))}
-            >
-              <TextField
-                label="Statement"
-                value={problem.statement}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      customerProblems: draft.productKnowledge.customerProblems.map((item) =>
-                        item.id === problem.id ? { ...item, statement: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Impact"
-                value={problem.impact}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      customerProblems: draft.productKnowledge.customerProblems.map((item) =>
-                        item.id === problem.id ? { ...item, impact: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.productKnowledge.customerProblems.length === 0 && <EmptyCollectionNotice />}
-        </div>
+              });
+              setExpanded("customerProblems", item.id);
+            }}
+          >
+            {draft.productKnowledge.customerProblems.map((problem: CustomerProblem) => (
+              <ItemRow
+                key={problem.id}
+                primary={labelForProblem(problem)}
+                secondary={problem.impact.trim() || undefined}
+                expanded={isExpanded("customerProblems", problem.id)}
+                onToggle={() => handleToggleItem("customerProblems", problem.id)}
+                onRemove={() => {
+                  markDirty(removeCustomerProblem(draft, problem.id));
+                  setExpanded("customerProblems", null);
+                }}
+                removeLabel="problem"
+              >
+                <TextField
+                  label="Statement"
+                  value={problem.statement}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        customerProblems: draft.productKnowledge.customerProblems.map((item) =>
+                          item.id === problem.id ? { ...item, statement: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="Impact"
+                  value={problem.impact}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        customerProblems: draft.productKnowledge.customerProblems.map((item) =>
+                          item.id === problem.id ? { ...item, impact: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </ItemRow>
+            ))}
+          </CollectionBlock>
 
-        <div className="space-y-3">
-          <SectionHeader
+          <CollectionBlock
             title="Desired Outcomes"
             description="Business outcomes customers want."
             addLabel="outcome"
-            onAdd={() =>
+            isEmpty={draft.productKnowledge.desiredOutcomes.length === 0}
+            onAdd={() => {
+              const item = createBlankDesiredOutcome();
               markDirty({
                 ...draft,
                 productKnowledge: {
                   ...draft.productKnowledge,
-                  desiredOutcomes: [
-                    ...draft.productKnowledge.desiredOutcomes,
-                    createBlankDesiredOutcome(),
-                  ],
+                  desiredOutcomes: [...draft.productKnowledge.desiredOutcomes, item],
                 },
-              })
-            }
-          />
-          {draft.productKnowledge.desiredOutcomes.map((outcome: DesiredOutcome) => (
-            <RowCard
-              key={outcome.id}
-              removeLabel="outcome"
-              onRemove={() => markDirty(removeDesiredOutcome(draft, outcome.id))}
-            >
-              <TextField
-                label="Statement"
-                value={outcome.statement}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      desiredOutcomes: draft.productKnowledge.desiredOutcomes.map((item) =>
-                        item.id === outcome.id ? { ...item, statement: value } : item,
-                      ),
-                    },
-                  })
+              });
+              setExpanded("desiredOutcomes", item.id);
+            }}
+          >
+            {draft.productKnowledge.desiredOutcomes.map((outcome: DesiredOutcome) => (
+              <ItemRow
+                key={outcome.id}
+                primary={labelForOutcome(outcome)}
+                secondary={
+                  outcome.problemIds.length
+                    ? `${outcome.problemIds.length} related problem${outcome.problemIds.length === 1 ? "" : "s"}`
+                    : undefined
                 }
-              />
-              <ReferencePicker
-                label="Related problems"
-                options={problemOptions}
-                selectedIds={outcome.problemIds}
-                emptyHint="Add customer problems first to link them here."
-                onChange={(problemIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      desiredOutcomes: draft.productKnowledge.desiredOutcomes.map((item) =>
-                        item.id === outcome.id ? { ...item, problemIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.productKnowledge.desiredOutcomes.length === 0 && <EmptyCollectionNotice />}
-        </div>
+                expanded={isExpanded("desiredOutcomes", outcome.id)}
+                onToggle={() => handleToggleItem("desiredOutcomes", outcome.id)}
+                onRemove={() => {
+                  markDirty(removeDesiredOutcome(draft, outcome.id));
+                  setExpanded("desiredOutcomes", null);
+                }}
+                removeLabel="outcome"
+              >
+                <TextField
+                  label="Statement"
+                  value={outcome.statement}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        desiredOutcomes: draft.productKnowledge.desiredOutcomes.map((item) =>
+                          item.id === outcome.id ? { ...item, statement: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related problems"
+                  options={problemOptions}
+                  selectedIds={outcome.problemIds}
+                  emptyHint="Add customer problems first to link them here."
+                  onChange={(problemIds) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        desiredOutcomes: draft.productKnowledge.desiredOutcomes.map((item) =>
+                          item.id === outcome.id ? { ...item, problemIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </ItemRow>
+            ))}
+          </CollectionBlock>
 
-        <div className="space-y-3">
-          <SectionHeader
+          <CollectionBlock
             title="Buying Reasons"
             description="Why customers buy."
             addLabel="buying reason"
-            onAdd={() =>
+            isEmpty={draft.productKnowledge.buyingReasons.length === 0}
+            onAdd={() => {
+              const item = createBlankBuyingReason();
               markDirty({
                 ...draft,
                 productKnowledge: {
                   ...draft.productKnowledge,
-                  buyingReasons: [...draft.productKnowledge.buyingReasons, createBlankBuyingReason()],
+                  buyingReasons: [...draft.productKnowledge.buyingReasons, item],
                 },
-              })
-            }
-          />
-          {draft.productKnowledge.buyingReasons.map((reason: BuyingReason) => (
-            <RowCard
-              key={reason.id}
-              removeLabel="buying reason"
-              onRemove={() => markDirty(removeBuyingReason(draft, reason.id))}
-            >
-              <TextField
-                label="Statement"
-                value={reason.statement}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      buyingReasons: draft.productKnowledge.buyingReasons.map((item) =>
-                        item.id === reason.id ? { ...item, statement: value } : item,
-                      ),
-                    },
-                  })
+              });
+              setExpanded("buyingReasons", item.id);
+            }}
+          >
+            {draft.productKnowledge.buyingReasons.map((reason: BuyingReason) => (
+              <ItemRow
+                key={reason.id}
+                primary={labelForBuyingReason(reason)}
+                secondary={
+                  reason.outcomeIds.length
+                    ? `${reason.outcomeIds.length} related outcome${reason.outcomeIds.length === 1 ? "" : "s"}`
+                    : undefined
                 }
-              />
-              <ReferencePicker
-                label="Related outcomes"
-                options={outcomeOptions}
-                selectedIds={reason.outcomeIds}
-                emptyHint="Add desired outcomes first to link them here."
-                onChange={(outcomeIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      buyingReasons: draft.productKnowledge.buyingReasons.map((item) =>
-                        item.id === reason.id ? { ...item, outcomeIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.productKnowledge.buyingReasons.length === 0 && <EmptyCollectionNotice />}
-        </div>
+                expanded={isExpanded("buyingReasons", reason.id)}
+                onToggle={() => handleToggleItem("buyingReasons", reason.id)}
+                onRemove={() => {
+                  markDirty(removeBuyingReason(draft, reason.id));
+                  setExpanded("buyingReasons", null);
+                }}
+                removeLabel="buying reason"
+              >
+                <TextField
+                  label="Statement"
+                  value={reason.statement}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        buyingReasons: draft.productKnowledge.buyingReasons.map((item) =>
+                          item.id === reason.id ? { ...item, statement: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related outcomes"
+                  options={outcomeOptions}
+                  selectedIds={reason.outcomeIds}
+                  emptyHint="Add desired outcomes first to link them here."
+                  onChange={(outcomeIds) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        buyingReasons: draft.productKnowledge.buyingReasons.map((item) =>
+                          item.id === reason.id ? { ...item, outcomeIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </ItemRow>
+            ))}
+          </CollectionBlock>
 
-        <div className="space-y-3">
-          <SectionHeader
+          <CollectionBlock
             title="ICP Criteria"
             description="Who the product is for."
             addLabel="criterion"
-            onAdd={() =>
+            isEmpty={draft.decisionStrategy.idealCustomerProfile.criteria.length === 0}
+            onAdd={() => {
+              const item = createBlankIcpCriterion();
               markDirty({
                 ...draft,
                 decisionStrategy: {
                   ...draft.decisionStrategy,
                   idealCustomerProfile: {
                     ...draft.decisionStrategy.idealCustomerProfile,
-                    criteria: [
-                      ...draft.decisionStrategy.idealCustomerProfile.criteria,
-                      createBlankIcpCriterion(),
-                    ],
+                    criteria: [...draft.decisionStrategy.idealCustomerProfile.criteria, item],
                   },
                 },
-              })
-            }
-          />
-          {draft.decisionStrategy.idealCustomerProfile.criteria.map(
-            (criterion: IdealCustomerCriterion) => (
-              <RowCard
-                key={criterion.id}
-                removeLabel="criterion"
-                onRemove={() => markDirty(removeIcpCriterion(draft, criterion.id))}
-              >
-                <TextAreaField
-                  label="Description"
-                  value={criterion.description}
-                  onChange={(value) =>
-                    markDirty({
-                      ...draft,
-                      decisionStrategy: {
-                        ...draft.decisionStrategy,
-                        idealCustomerProfile: {
-                          ...draft.decisionStrategy.idealCustomerProfile,
-                          criteria: draft.decisionStrategy.idealCustomerProfile.criteria.map(
-                            (item) =>
-                              item.id === criterion.id ? { ...item, description: value } : item,
-                          ),
+              });
+              setExpanded("icpCriteria", item.id);
+            }}
+          >
+            {draft.decisionStrategy.idealCustomerProfile.criteria.map(
+              (criterion: IdealCustomerCriterion) => (
+                <ItemRow
+                  key={criterion.id}
+                  primary={labelForCriterion(criterion)}
+                  expanded={isExpanded("icpCriteria", criterion.id)}
+                  onToggle={() => handleToggleItem("icpCriteria", criterion.id)}
+                  onRemove={() => {
+                    markDirty(removeIcpCriterion(draft, criterion.id));
+                    setExpanded("icpCriteria", null);
+                  }}
+                  removeLabel="criterion"
+                >
+                  <TextAreaField
+                    label="Description"
+                    value={criterion.description}
+                    onChange={(value) =>
+                      markDirty({
+                        ...draft,
+                        decisionStrategy: {
+                          ...draft.decisionStrategy,
+                          idealCustomerProfile: {
+                            ...draft.decisionStrategy.idealCustomerProfile,
+                            criteria: draft.decisionStrategy.idealCustomerProfile.criteria.map(
+                              (item) =>
+                                item.id === criterion.id ? { ...item, description: value } : item,
+                            ),
+                          },
                         },
-                      },
-                    })
-                  }
-                />
-              </RowCard>
-            ),
-          )}
-          {draft.decisionStrategy.idealCustomerProfile.criteria.length === 0 && (
-            <EmptyCollectionNotice />
-          )}
-        </div>
+                      })
+                    }
+                  />
+                </ItemRow>
+              ),
+            )}
+          </CollectionBlock>
 
-        <div className="space-y-3">
-          <SectionHeader
+          <CollectionBlock
             title="ICP Examples"
             description="Named example companies when known."
             addLabel="example"
-            onAdd={() =>
+            isEmpty={draft.decisionStrategy.idealCustomerProfile.examples.length === 0}
+            onAdd={() => {
+              const item = createBlankIcpExample();
               markDirty({
                 ...draft,
                 decisionStrategy: {
                   ...draft.decisionStrategy,
                   idealCustomerProfile: {
                     ...draft.decisionStrategy.idealCustomerProfile,
-                    examples: [
-                      ...draft.decisionStrategy.idealCustomerProfile.examples,
-                      createBlankIcpExample(),
-                    ],
+                    examples: [...draft.decisionStrategy.idealCustomerProfile.examples, item],
                   },
                 },
-              })
-            }
-          />
-          {draft.decisionStrategy.idealCustomerProfile.examples.map(
-            (example: IdealCustomerExample) => (
-              <RowCard
-                key={example.id}
-                removeLabel="example"
-                onRemove={() => markDirty(removeIcpExample(draft, example.id))}
-              >
-                <TextField
-                  label="Company name"
-                  value={example.companyName}
-                  onChange={(value) =>
-                    markDirty({
-                      ...draft,
-                      decisionStrategy: {
-                        ...draft.decisionStrategy,
-                        idealCustomerProfile: {
-                          ...draft.decisionStrategy.idealCustomerProfile,
-                          examples: draft.decisionStrategy.idealCustomerProfile.examples.map(
-                            (item) =>
-                              item.id === example.id ? { ...item, companyName: value } : item,
-                          ),
-                        },
-                      },
-                    })
-                  }
-                />
-                <TextField
-                  label="Rationale"
-                  value={example.rationale}
-                  onChange={(value) =>
-                    markDirty({
-                      ...draft,
-                      decisionStrategy: {
-                        ...draft.decisionStrategy,
-                        idealCustomerProfile: {
-                          ...draft.decisionStrategy.idealCustomerProfile,
-                          examples: draft.decisionStrategy.idealCustomerProfile.examples.map(
-                            (item) =>
-                              item.id === example.id ? { ...item, rationale: value } : item,
-                          ),
-                        },
-                      },
-                    })
-                  }
-                />
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-zinc-700">Relationship</span>
-                  <select
-                    value={example.relationship ?? "example-only"}
-                    onChange={(event) =>
+              });
+              setExpanded("icpExamples", item.id);
+            }}
+          >
+            {draft.decisionStrategy.idealCustomerProfile.examples.map(
+              (example: IdealCustomerExample) => (
+                <ItemRow
+                  key={example.id}
+                  primary={labelForIcpExample(example)}
+                  secondary={example.rationale.trim() || undefined}
+                  expanded={isExpanded("icpExamples", example.id)}
+                  onToggle={() => handleToggleItem("icpExamples", example.id)}
+                  onRemove={() => {
+                    markDirty(removeIcpExample(draft, example.id));
+                    setExpanded("icpExamples", null);
+                  }}
+                  removeLabel="example"
+                >
+                  <TextField
+                    label="Company name"
+                    value={example.companyName}
+                    onChange={(value) =>
                       markDirty({
                         ...draft,
                         decisionStrategy: {
@@ -710,667 +909,756 @@ export function VendorRefinementMode({
                             ...draft.decisionStrategy.idealCustomerProfile,
                             examples: draft.decisionStrategy.idealCustomerProfile.examples.map(
                               (item) =>
-                                item.id === example.id
-                                  ? {
-                                      ...item,
-                                      relationship: event.target
-                                        .value as IdealCustomerRelationship,
-                                    }
-                                  : item,
+                                item.id === example.id ? { ...item, companyName: value } : item,
                             ),
                           },
                         },
                       })
                     }
-                    className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                  >
-                    <option value="customer">Customer</option>
-                    <option value="prospect">Prospect</option>
-                    <option value="example-only">Example only</option>
-                  </select>
-                </label>
-                <ReferencePicker
-                  label="Related ICP criteria"
-                  options={criterionOptions}
-                  selectedIds={example.criterionIds}
-                  emptyHint="Add ICP criteria first to link them here."
-                  onChange={(criterionIds) =>
-                    markDirty({
-                      ...draft,
-                      decisionStrategy: {
-                        ...draft.decisionStrategy,
-                        idealCustomerProfile: {
-                          ...draft.decisionStrategy.idealCustomerProfile,
-                          examples: draft.decisionStrategy.idealCustomerProfile.examples.map(
-                            (item) =>
-                              item.id === example.id ? { ...item, criterionIds } : item,
-                          ),
+                  />
+                  <TextField
+                    label="Rationale"
+                    value={example.rationale}
+                    onChange={(value) =>
+                      markDirty({
+                        ...draft,
+                        decisionStrategy: {
+                          ...draft.decisionStrategy,
+                          idealCustomerProfile: {
+                            ...draft.decisionStrategy.idealCustomerProfile,
+                            examples: draft.decisionStrategy.idealCustomerProfile.examples.map(
+                              (item) =>
+                                item.id === example.id ? { ...item, rationale: value } : item,
+                            ),
+                          },
                         },
-                      },
-                    })
-                  }
-                />
-              </RowCard>
-            ),
-          )}
-          {draft.decisionStrategy.idealCustomerProfile.examples.length === 0 && (
-            <EmptyCollectionNotice />
-          )}
-        </div>
-      </FrameworkSection>
+                      })
+                    }
+                  />
+                  <label className="block text-sm">
+                    <span className="mb-0.5 block font-medium text-zinc-700">Relationship</span>
+                    <select
+                      value={example.relationship ?? "example-only"}
+                      onChange={(event) =>
+                        markDirty({
+                          ...draft,
+                          decisionStrategy: {
+                            ...draft.decisionStrategy,
+                            idealCustomerProfile: {
+                              ...draft.decisionStrategy.idealCustomerProfile,
+                              examples: draft.decisionStrategy.idealCustomerProfile.examples.map(
+                                (item) =>
+                                  item.id === example.id
+                                    ? {
+                                        ...item,
+                                        relationship: event.target.value as IdealCustomerRelationship,
+                                      }
+                                    : item,
+                              ),
+                            },
+                          },
+                        })
+                      }
+                      className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
+                    >
+                      <option value="customer">Customer</option>
+                      <option value="prospect">Prospect</option>
+                      <option value="example-only">Example only</option>
+                    </select>
+                  </label>
+                  <CompactReferencePicker
+                    label="Related ICP criteria"
+                    options={criterionOptions}
+                    selectedIds={example.criterionIds}
+                    emptyHint="Add ICP criteria first to link them here."
+                    onChange={(criterionIds) =>
+                      markDirty({
+                        ...draft,
+                        decisionStrategy: {
+                          ...draft.decisionStrategy,
+                          idealCustomerProfile: {
+                            ...draft.decisionStrategy.idealCustomerProfile,
+                            examples: draft.decisionStrategy.idealCustomerProfile.examples.map(
+                              (item) =>
+                                item.id === example.id ? { ...item, criterionIds } : item,
+                            ),
+                          },
+                        },
+                      })
+                    }
+                  />
+                </ItemRow>
+              ),
+            )}
+          </CollectionBlock>
+        </AccordionSection>
 
-      {/* 3. Why Now */}
-      <FrameworkSection
-        title="3. Why Now"
-        description="Timing signals that suggest a prospect should act now."
-      >
-        <div className="space-y-3">
-          <SectionHeader
+        <AccordionSection
+          sectionId="whyNow"
+          open={openSection === "whyNow"}
+          summary={summaries.whyNow}
+          highlighted={highlightedSection === "whyNow"}
+          onToggle={() => handleToggleSection("whyNow")}
+        >
+          <CollectionBlock
             title="Why Now Signals"
-            description="Timing and urgency signals grounded in your GTM motion."
+            description="Timing and urgency signals."
             addLabel="signal"
-            onAdd={() =>
+            isEmpty={draft.decisionStrategy.whyNowSignals.length === 0}
+            onAdd={() => {
+              const item = createBlankWhyNowSignal();
               markDirty({
                 ...draft,
                 decisionStrategy: {
                   ...draft.decisionStrategy,
-                  whyNowSignals: [
-                    ...draft.decisionStrategy.whyNowSignals,
-                    createBlankWhyNowSignal(),
-                  ],
+                  whyNowSignals: [...draft.decisionStrategy.whyNowSignals, item],
                 },
-              })
-            }
-          />
-          {draft.decisionStrategy.whyNowSignals.map((signal: WhyNowSignal) => (
-            <RowCard
-              key={signal.id}
-              removeLabel="signal"
-              onRemove={() => markDirty(removeWhyNowSignal(draft, signal.id))}
-            >
-              <TextField
-                label="Signal"
-                value={signal.signal}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    decisionStrategy: {
-                      ...draft.decisionStrategy,
-                      whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
-                        item.id === signal.id ? { ...item, signal: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Why it matters"
-                value={signal.whyItMatters}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    decisionStrategy: {
-                      ...draft.decisionStrategy,
-                      whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
-                        item.id === signal.id ? { ...item, whyItMatters: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="First meeting angle"
-                value={signal.firstMeetingAngle}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    decisionStrategy: {
-                      ...draft.decisionStrategy,
-                      whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
-                        item.id === signal.id ? { ...item, firstMeetingAngle: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related problems"
-                options={problemOptions}
-                selectedIds={signal.problemIds}
-                emptyHint="Add customer problems first to link them here."
-                onChange={(problemIds) =>
-                  markDirty({
-                    ...draft,
-                    decisionStrategy: {
-                      ...draft.decisionStrategy,
-                      whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
-                        item.id === signal.id ? { ...item, problemIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related outcomes"
-                options={outcomeOptions}
-                selectedIds={signal.outcomeIds}
-                emptyHint="Add desired outcomes first to link them here."
-                onChange={(outcomeIds) =>
-                  markDirty({
-                    ...draft,
-                    decisionStrategy: {
-                      ...draft.decisionStrategy,
-                      whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
-                        item.id === signal.id ? { ...item, outcomeIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.decisionStrategy.whyNowSignals.length === 0 && <EmptyCollectionNotice />}
-        </div>
-      </FrameworkSection>
+              });
+              setExpanded("whyNowSignals", item.id);
+            }}
+          >
+            {draft.decisionStrategy.whyNowSignals.map((signal: WhyNowSignal) => (
+              <ItemRow
+                key={signal.id}
+                primary={labelForWhyNowSignal(signal)}
+                secondary={signal.whyItMatters.trim() || undefined}
+                expanded={isExpanded("whyNowSignals", signal.id)}
+                onToggle={() => handleToggleItem("whyNowSignals", signal.id)}
+                onRemove={() => {
+                  markDirty(removeWhyNowSignal(draft, signal.id));
+                  setExpanded("whyNowSignals", null);
+                }}
+                removeLabel="signal"
+              >
+                <TextField
+                  label="Signal"
+                  value={signal.signal}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      decisionStrategy: {
+                        ...draft.decisionStrategy,
+                        whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
+                          item.id === signal.id ? { ...item, signal: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="Why it matters"
+                  value={signal.whyItMatters}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      decisionStrategy: {
+                        ...draft.decisionStrategy,
+                        whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
+                          item.id === signal.id ? { ...item, whyItMatters: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="First meeting angle"
+                  value={signal.firstMeetingAngle}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      decisionStrategy: {
+                        ...draft.decisionStrategy,
+                        whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
+                          item.id === signal.id ? { ...item, firstMeetingAngle: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related problems"
+                  options={problemOptions}
+                  selectedIds={signal.problemIds}
+                  emptyHint="Add customer problems first to link them here."
+                  onChange={(problemIds) =>
+                    markDirty({
+                      ...draft,
+                      decisionStrategy: {
+                        ...draft.decisionStrategy,
+                        whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
+                          item.id === signal.id ? { ...item, problemIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related outcomes"
+                  options={outcomeOptions}
+                  selectedIds={signal.outcomeIds}
+                  emptyHint="Add desired outcomes first to link them here."
+                  onChange={(outcomeIds) =>
+                    markDirty({
+                      ...draft,
+                      decisionStrategy: {
+                        ...draft.decisionStrategy,
+                        whyNowSignals: draft.decisionStrategy.whyNowSignals.map((item) =>
+                          item.id === signal.id ? { ...item, outcomeIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </ItemRow>
+            ))}
+          </CollectionBlock>
+        </AccordionSection>
 
-      {/* 4. Why Us */}
-      <FrameworkSection
-        title="4. Why Us"
-        description="Capabilities, use cases, alternatives, differentiation, and proof."
-      >
-        <div className="space-y-3">
-          <SectionHeader
+        <AccordionSection
+          sectionId="whyUs"
+          open={openSection === "whyUs"}
+          summary={summaries.whyUs}
+          highlighted={highlightedSection === "whyUs"}
+          onToggle={() => handleToggleSection("whyUs")}
+        >
+          <CollectionBlock
             title="Capabilities"
             description="What the product can do."
             addLabel="capability"
-            onAdd={() =>
+            isEmpty={draft.productKnowledge.capabilities.length === 0}
+            onAdd={() => {
+              const item = createBlankCapability();
               markDirty({
                 ...draft,
                 productKnowledge: {
                   ...draft.productKnowledge,
-                  capabilities: [...draft.productKnowledge.capabilities, createBlankCapability()],
+                  capabilities: [...draft.productKnowledge.capabilities, item],
                 },
-              })
-            }
-          />
-          {draft.productKnowledge.capabilities.map((capability: Capability) => (
-            <RowCard
-              key={capability.id}
-              removeLabel="capability"
-              onRemove={() => markDirty(removeCapability(draft, capability.id))}
-            >
-              <TextField
-                label="Name"
-                value={capability.name}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      capabilities: draft.productKnowledge.capabilities.map((item) =>
-                        item.id === capability.id ? { ...item, name: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Description"
-                value={capability.description}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      capabilities: draft.productKnowledge.capabilities.map((item) =>
-                        item.id === capability.id ? { ...item, description: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related problems"
-                options={problemOptions}
-                selectedIds={capability.problemIds}
-                emptyHint="Add customer problems first to link them here."
-                onChange={(problemIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      capabilities: draft.productKnowledge.capabilities.map((item) =>
-                        item.id === capability.id ? { ...item, problemIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related outcomes"
-                options={outcomeOptions}
-                selectedIds={capability.outcomeIds}
-                emptyHint="Add desired outcomes first to link them here."
-                onChange={(outcomeIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      capabilities: draft.productKnowledge.capabilities.map((item) =>
-                        item.id === capability.id ? { ...item, outcomeIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.productKnowledge.capabilities.length === 0 && <EmptyCollectionNotice />}
-        </div>
-
-        <div className="space-y-3">
-          <SectionHeader
-            title="Use Cases"
-            description="Concrete ways customers apply the product."
-            addLabel="use case"
-            onAdd={() =>
-              markDirty({
-                ...draft,
-                productKnowledge: {
-                  ...draft.productKnowledge,
-                  useCases: [...draft.productKnowledge.useCases, createBlankUseCase()],
-                },
-              })
-            }
-          />
-          {draft.productKnowledge.useCases.map((useCase: UseCase) => (
-            <RowCard
-              key={useCase.id}
-              removeLabel="use case"
-              onRemove={() => markDirty(removeUseCase(draft, useCase.id))}
-            >
-              <TextField
-                label="Name"
-                value={useCase.name}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      useCases: draft.productKnowledge.useCases.map((item) =>
-                        item.id === useCase.id ? { ...item, name: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Description"
-                value={useCase.description}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      useCases: draft.productKnowledge.useCases.map((item) =>
-                        item.id === useCase.id ? { ...item, description: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related problems"
-                options={problemOptions}
-                selectedIds={useCase.problemIds}
-                emptyHint="Add customer problems first to link them here."
-                onChange={(problemIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      useCases: draft.productKnowledge.useCases.map((item) =>
-                        item.id === useCase.id ? { ...item, problemIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related outcomes"
-                options={outcomeOptions}
-                selectedIds={useCase.outcomeIds}
-                emptyHint="Add desired outcomes first to link them here."
-                onChange={(outcomeIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      useCases: draft.productKnowledge.useCases.map((item) =>
-                        item.id === useCase.id ? { ...item, outcomeIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related capabilities"
-                options={capabilityOptions}
-                selectedIds={useCase.capabilityIds}
-                emptyHint="Add capabilities first to link them here."
-                onChange={(capabilityIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      useCases: draft.productKnowledge.useCases.map((item) =>
-                        item.id === useCase.id ? { ...item, capabilityIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.productKnowledge.useCases.length === 0 && <EmptyCollectionNotice />}
-        </div>
-
-        <div className="space-y-3">
-          <SectionHeader
-            title="Common Alternatives"
-            description="Alternatives buyers compare against."
-            addLabel="alternative"
-            onAdd={() =>
-              markDirty({
-                ...draft,
-                productKnowledge: {
-                  ...draft.productKnowledge,
-                  commonAlternatives: [
-                    ...draft.productKnowledge.commonAlternatives,
-                    createBlankCommonAlternative(),
-                  ],
-                },
-              })
-            }
-          />
-          {draft.productKnowledge.commonAlternatives.map((alternative: CommonAlternative) => (
-            <RowCard
-              key={alternative.id}
-              removeLabel="alternative"
-              onRemove={() => markDirty(removeCommonAlternative(draft, alternative.id))}
-            >
-              <TextField
-                label="Name"
-                value={alternative.name}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      commonAlternatives: draft.productKnowledge.commonAlternatives.map((item) =>
-                        item.id === alternative.id ? { ...item, name: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Description"
-                value={alternative.description}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      commonAlternatives: draft.productKnowledge.commonAlternatives.map((item) =>
-                        item.id === alternative.id ? { ...item, description: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.productKnowledge.commonAlternatives.length === 0 && <EmptyCollectionNotice />}
-        </div>
-
-        <div className="space-y-3">
-          <SectionHeader
-            title="Relevant Differentiation"
-            description="How you differ from those alternatives."
-            addLabel="differentiation"
-            onAdd={() =>
-              markDirty({
-                ...draft,
-                productKnowledge: {
-                  ...draft.productKnowledge,
-                  relevantDifferentiation: [
-                    ...draft.productKnowledge.relevantDifferentiation,
-                    createBlankRelevantDifferentiation(),
-                  ],
-                },
-              })
-            }
-          />
-          {draft.productKnowledge.relevantDifferentiation.map(
-            (differentiation: RelevantDifferentiation) => (
-              <RowCard
-                key={differentiation.id}
-                removeLabel="differentiation"
-                onRemove={() => markDirty(removeRelevantDifferentiation(draft, differentiation.id))}
+              });
+              setExpanded("capabilities", item.id);
+            }}
+          >
+            {draft.productKnowledge.capabilities.map((capability: Capability) => (
+              <ItemRow
+                key={capability.id}
+                primary={labelForCapability(capability)}
+                secondary={capability.description.trim() || undefined}
+                expanded={isExpanded("capabilities", capability.id)}
+                onToggle={() => handleToggleItem("capabilities", capability.id)}
+                onRemove={() => {
+                  markDirty(removeCapability(draft, capability.id));
+                  setExpanded("capabilities", null);
+                }}
+                removeLabel="capability"
               >
-                <TextAreaField
-                  label="Statement"
-                  value={differentiation.statement}
+                <TextField
+                  label="Name"
+                  value={capability.name}
                   onChange={(value) =>
                     markDirty({
                       ...draft,
                       productKnowledge: {
                         ...draft.productKnowledge,
-                        relevantDifferentiation: draft.productKnowledge.relevantDifferentiation.map(
-                          (item) =>
-                            item.id === differentiation.id ? { ...item, statement: value } : item,
+                        capabilities: draft.productKnowledge.capabilities.map((item) =>
+                          item.id === capability.id ? { ...item, name: value } : item,
                         ),
                       },
                     })
                   }
                 />
-                <ReferencePicker
-                  label="Related alternatives"
-                  options={alternativeOptions}
-                  selectedIds={differentiation.alternativeIds}
-                  emptyHint="Add common alternatives first to link them here."
-                  onChange={(alternativeIds) =>
+                <TextField
+                  label="Description"
+                  value={capability.description}
+                  onChange={(value) =>
                     markDirty({
                       ...draft,
                       productKnowledge: {
                         ...draft.productKnowledge,
-                        relevantDifferentiation: draft.productKnowledge.relevantDifferentiation.map(
-                          (item) =>
-                            item.id === differentiation.id ? { ...item, alternativeIds } : item,
+                        capabilities: draft.productKnowledge.capabilities.map((item) =>
+                          item.id === capability.id ? { ...item, description: value } : item,
                         ),
                       },
                     })
                   }
                 />
-                <ReferencePicker
+                <CompactReferencePicker
                   label="Related problems"
                   options={problemOptions}
-                  selectedIds={differentiation.problemIds}
+                  selectedIds={capability.problemIds}
                   emptyHint="Add customer problems first to link them here."
                   onChange={(problemIds) =>
                     markDirty({
                       ...draft,
                       productKnowledge: {
                         ...draft.productKnowledge,
-                        relevantDifferentiation: draft.productKnowledge.relevantDifferentiation.map(
-                          (item) =>
-                            item.id === differentiation.id ? { ...item, problemIds } : item,
+                        capabilities: draft.productKnowledge.capabilities.map((item) =>
+                          item.id === capability.id ? { ...item, problemIds } : item,
                         ),
                       },
                     })
                   }
                 />
-                <ReferencePicker
+                <CompactReferencePicker
                   label="Related outcomes"
                   options={outcomeOptions}
-                  selectedIds={differentiation.outcomeIds}
+                  selectedIds={capability.outcomeIds}
                   emptyHint="Add desired outcomes first to link them here."
                   onChange={(outcomeIds) =>
                     markDirty({
                       ...draft,
                       productKnowledge: {
                         ...draft.productKnowledge,
-                        relevantDifferentiation: draft.productKnowledge.relevantDifferentiation.map(
-                          (item) =>
-                            item.id === differentiation.id ? { ...item, outcomeIds } : item,
+                        capabilities: draft.productKnowledge.capabilities.map((item) =>
+                          item.id === capability.id ? { ...item, outcomeIds } : item,
                         ),
                       },
                     })
                   }
                 />
-              </RowCard>
-            ),
-          )}
-          {draft.productKnowledge.relevantDifferentiation.length === 0 && <EmptyCollectionNotice />}
-        </div>
+              </ItemRow>
+            ))}
+          </CollectionBlock>
 
-        <div className="space-y-3">
-          <SectionHeader
-            title="Proof Points"
-            description="Evidence that substantiates your claims."
-            addLabel="proof point"
-            onAdd={() =>
+          <CollectionBlock
+            title="Use Cases"
+            description="Concrete ways customers apply the product."
+            addLabel="use case"
+            isEmpty={draft.productKnowledge.useCases.length === 0}
+            onAdd={() => {
+              const item = createBlankUseCase();
               markDirty({
                 ...draft,
                 productKnowledge: {
                   ...draft.productKnowledge,
-                  proofPoints: [...draft.productKnowledge.proofPoints, createBlankProofPoint()],
+                  useCases: [...draft.productKnowledge.useCases, item],
                 },
-              })
-            }
-          />
-          {draft.productKnowledge.proofPoints.map((proofPoint: ProofPoint) => (
-            <RowCard
-              key={proofPoint.id}
-              removeLabel="proof point"
-              onRemove={() => markDirty(removeProofPoint(draft, proofPoint.id))}
-            >
-              <TextAreaField
-                label="Summary"
-                value={proofPoint.summary}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      proofPoints: draft.productKnowledge.proofPoints.map((item) =>
-                        item.id === proofPoint.id ? { ...item, summary: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Customer name (optional)"
-                value={proofPoint.customerName ?? ""}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      proofPoints: draft.productKnowledge.proofPoints.map((item) =>
-                        item.id === proofPoint.id
-                          ? { ...item, customerName: value || undefined }
-                          : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Industry (optional)"
-                value={proofPoint.industry ?? ""}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      proofPoints: draft.productKnowledge.proofPoints.map((item) =>
-                        item.id === proofPoint.id
-                          ? { ...item, industry: value || undefined }
-                          : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Metric (optional)"
-                value={proofPoint.metric ?? ""}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      proofPoints: draft.productKnowledge.proofPoints.map((item) =>
-                        item.id === proofPoint.id ? { ...item, metric: value || undefined } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related outcomes"
-                options={outcomeOptions}
-                selectedIds={proofPoint.outcomeIds}
-                emptyHint="Add desired outcomes first to link them here."
-                onChange={(outcomeIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      proofPoints: draft.productKnowledge.proofPoints.map((item) =>
-                        item.id === proofPoint.id ? { ...item, outcomeIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <ReferencePicker
-                label="Related use cases"
-                options={useCaseOptions}
-                selectedIds={proofPoint.useCaseIds}
-                emptyHint="Add use cases first to link them here."
-                onChange={(useCaseIds) =>
-                  markDirty({
-                    ...draft,
-                    productKnowledge: {
-                      ...draft.productKnowledge,
-                      proofPoints: draft.productKnowledge.proofPoints.map((item) =>
-                        item.id === proofPoint.id ? { ...item, useCaseIds } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-            </RowCard>
-          ))}
-          {draft.productKnowledge.proofPoints.length === 0 && <EmptyCollectionNotice />}
-        </div>
-      </FrameworkSection>
+              });
+              setExpanded("useCases", item.id);
+            }}
+          >
+            {draft.productKnowledge.useCases.map((useCase: UseCase) => (
+              <ItemRow
+                key={useCase.id}
+                primary={labelForUseCase(useCase)}
+                secondary={useCase.description.trim() || undefined}
+                expanded={isExpanded("useCases", useCase.id)}
+                onToggle={() => handleToggleItem("useCases", useCase.id)}
+                onRemove={() => {
+                  markDirty(removeUseCase(draft, useCase.id));
+                  setExpanded("useCases", null);
+                }}
+                removeLabel="use case"
+              >
+                <TextField
+                  label="Name"
+                  value={useCase.name}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        useCases: draft.productKnowledge.useCases.map((item) =>
+                          item.id === useCase.id ? { ...item, name: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="Description"
+                  value={useCase.description}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        useCases: draft.productKnowledge.useCases.map((item) =>
+                          item.id === useCase.id ? { ...item, description: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related problems"
+                  options={problemOptions}
+                  selectedIds={useCase.problemIds}
+                  emptyHint="Add customer problems first to link them here."
+                  onChange={(problemIds) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        useCases: draft.productKnowledge.useCases.map((item) =>
+                          item.id === useCase.id ? { ...item, problemIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related outcomes"
+                  options={outcomeOptions}
+                  selectedIds={useCase.outcomeIds}
+                  emptyHint="Add desired outcomes first to link them here."
+                  onChange={(outcomeIds) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        useCases: draft.productKnowledge.useCases.map((item) =>
+                          item.id === useCase.id ? { ...item, outcomeIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related capabilities"
+                  options={capabilityOptions}
+                  selectedIds={useCase.capabilityIds}
+                  emptyHint="Add capabilities first to link them here."
+                  onChange={(capabilityIds) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        useCases: draft.productKnowledge.useCases.map((item) =>
+                          item.id === useCase.id ? { ...item, capabilityIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </ItemRow>
+            ))}
+          </CollectionBlock>
 
-      {/* 5. Disqualifiers & Red Flags */}
-      <FrameworkSection
-        title="5. Disqualifiers & Red Flags"
-        description="Firmographic disqualifiers and red flags. These never apply to Why Now."
-      >
-        <div className="space-y-3">
-          <SectionHeader
+          <CollectionBlock
+            title="Common Alternatives"
+            description="Alternatives buyers compare against."
+            addLabel="alternative"
+            isEmpty={draft.productKnowledge.commonAlternatives.length === 0}
+            onAdd={() => {
+              const item = createBlankCommonAlternative();
+              markDirty({
+                ...draft,
+                productKnowledge: {
+                  ...draft.productKnowledge,
+                  commonAlternatives: [...draft.productKnowledge.commonAlternatives, item],
+                },
+              });
+              setExpanded("commonAlternatives", item.id);
+            }}
+          >
+            {draft.productKnowledge.commonAlternatives.map((alternative: CommonAlternative) => (
+              <ItemRow
+                key={alternative.id}
+                primary={labelForAlternative(alternative)}
+                secondary={alternative.description.trim() || undefined}
+                expanded={isExpanded("commonAlternatives", alternative.id)}
+                onToggle={() => handleToggleItem("commonAlternatives", alternative.id)}
+                onRemove={() => {
+                  markDirty(removeCommonAlternative(draft, alternative.id));
+                  setExpanded("commonAlternatives", null);
+                }}
+                removeLabel="alternative"
+              >
+                <TextField
+                  label="Name"
+                  value={alternative.name}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        commonAlternatives: draft.productKnowledge.commonAlternatives.map((item) =>
+                          item.id === alternative.id ? { ...item, name: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="Description"
+                  value={alternative.description}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        commonAlternatives: draft.productKnowledge.commonAlternatives.map((item) =>
+                          item.id === alternative.id ? { ...item, description: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </ItemRow>
+            ))}
+          </CollectionBlock>
+
+          <CollectionBlock
+            title="Relevant Differentiation"
+            description="How you differ from those alternatives."
+            addLabel="differentiation"
+            isEmpty={draft.productKnowledge.relevantDifferentiation.length === 0}
+            onAdd={() => {
+              const item = createBlankRelevantDifferentiation();
+              markDirty({
+                ...draft,
+                productKnowledge: {
+                  ...draft.productKnowledge,
+                  relevantDifferentiation: [
+                    ...draft.productKnowledge.relevantDifferentiation,
+                    item,
+                  ],
+                },
+              });
+              setExpanded("relevantDifferentiation", item.id);
+            }}
+          >
+            {draft.productKnowledge.relevantDifferentiation.map(
+              (differentiation: RelevantDifferentiation) => (
+                <ItemRow
+                  key={differentiation.id}
+                  primary={labelForDifferentiation(differentiation)}
+                  expanded={isExpanded("relevantDifferentiation", differentiation.id)}
+                  onToggle={() => handleToggleItem("relevantDifferentiation", differentiation.id)}
+                  onRemove={() => {
+                    markDirty(removeRelevantDifferentiation(draft, differentiation.id));
+                    setExpanded("relevantDifferentiation", null);
+                  }}
+                  removeLabel="differentiation"
+                >
+                  <TextAreaField
+                    label="Statement"
+                    value={differentiation.statement}
+                    onChange={(value) =>
+                      markDirty({
+                        ...draft,
+                        productKnowledge: {
+                          ...draft.productKnowledge,
+                          relevantDifferentiation:
+                            draft.productKnowledge.relevantDifferentiation.map((item) =>
+                              item.id === differentiation.id ? { ...item, statement: value } : item,
+                            ),
+                        },
+                      })
+                    }
+                  />
+                  <CompactReferencePicker
+                    label="Related alternatives"
+                    options={alternativeOptions}
+                    selectedIds={differentiation.alternativeIds}
+                    emptyHint="Add common alternatives first to link them here."
+                    onChange={(alternativeIds) =>
+                      markDirty({
+                        ...draft,
+                        productKnowledge: {
+                          ...draft.productKnowledge,
+                          relevantDifferentiation:
+                            draft.productKnowledge.relevantDifferentiation.map((item) =>
+                              item.id === differentiation.id
+                                ? { ...item, alternativeIds }
+                                : item,
+                            ),
+                        },
+                      })
+                    }
+                  />
+                  <CompactReferencePicker
+                    label="Related problems"
+                    options={problemOptions}
+                    selectedIds={differentiation.problemIds}
+                    emptyHint="Add customer problems first to link them here."
+                    onChange={(problemIds) =>
+                      markDirty({
+                        ...draft,
+                        productKnowledge: {
+                          ...draft.productKnowledge,
+                          relevantDifferentiation:
+                            draft.productKnowledge.relevantDifferentiation.map((item) =>
+                              item.id === differentiation.id ? { ...item, problemIds } : item,
+                            ),
+                        },
+                      })
+                    }
+                  />
+                  <CompactReferencePicker
+                    label="Related outcomes"
+                    options={outcomeOptions}
+                    selectedIds={differentiation.outcomeIds}
+                    emptyHint="Add desired outcomes first to link them here."
+                    onChange={(outcomeIds) =>
+                      markDirty({
+                        ...draft,
+                        productKnowledge: {
+                          ...draft.productKnowledge,
+                          relevantDifferentiation:
+                            draft.productKnowledge.relevantDifferentiation.map((item) =>
+                              item.id === differentiation.id ? { ...item, outcomeIds } : item,
+                            ),
+                        },
+                      })
+                    }
+                  />
+                </ItemRow>
+              ),
+            )}
+          </CollectionBlock>
+
+          <CollectionBlock
+            title="Proof Points"
+            description="Evidence that substantiates your claims."
+            addLabel="proof point"
+            isEmpty={draft.productKnowledge.proofPoints.length === 0}
+            onAdd={() => {
+              const item = createBlankProofPoint();
+              markDirty({
+                ...draft,
+                productKnowledge: {
+                  ...draft.productKnowledge,
+                  proofPoints: [...draft.productKnowledge.proofPoints, item],
+                },
+              });
+              setExpanded("proofPoints", item.id);
+            }}
+          >
+            {draft.productKnowledge.proofPoints.map((proofPoint: ProofPoint) => (
+              <ItemRow
+                key={proofPoint.id}
+                primary={labelForProofPoint(proofPoint)}
+                secondary={proofPoint.customerName?.trim() || undefined}
+                expanded={isExpanded("proofPoints", proofPoint.id)}
+                onToggle={() => handleToggleItem("proofPoints", proofPoint.id)}
+                onRemove={() => {
+                  markDirty(removeProofPoint(draft, proofPoint.id));
+                  setExpanded("proofPoints", null);
+                }}
+                removeLabel="proof point"
+              >
+                <TextAreaField
+                  label="Summary"
+                  value={proofPoint.summary}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        proofPoints: draft.productKnowledge.proofPoints.map((item) =>
+                          item.id === proofPoint.id ? { ...item, summary: value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="Customer name (optional)"
+                  value={proofPoint.customerName ?? ""}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        proofPoints: draft.productKnowledge.proofPoints.map((item) =>
+                          item.id === proofPoint.id
+                            ? { ...item, customerName: value || undefined }
+                            : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="Industry (optional)"
+                  value={proofPoint.industry ?? ""}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        proofPoints: draft.productKnowledge.proofPoints.map((item) =>
+                          item.id === proofPoint.id
+                            ? { ...item, industry: value || undefined }
+                            : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <TextField
+                  label="Metric (optional)"
+                  value={proofPoint.metric ?? ""}
+                  onChange={(value) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        proofPoints: draft.productKnowledge.proofPoints.map((item) =>
+                          item.id === proofPoint.id
+                            ? { ...item, metric: value || undefined }
+                            : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related outcomes"
+                  options={outcomeOptions}
+                  selectedIds={proofPoint.outcomeIds}
+                  emptyHint="Add desired outcomes first to link them here."
+                  onChange={(outcomeIds) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        proofPoints: draft.productKnowledge.proofPoints.map((item) =>
+                          item.id === proofPoint.id ? { ...item, outcomeIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+                <CompactReferencePicker
+                  label="Related use cases"
+                  options={useCaseOptions}
+                  selectedIds={proofPoint.useCaseIds}
+                  emptyHint="Add use cases first to link them here."
+                  onChange={(useCaseIds) =>
+                    markDirty({
+                      ...draft,
+                      productKnowledge: {
+                        ...draft.productKnowledge,
+                        proofPoints: draft.productKnowledge.proofPoints.map((item) =>
+                          item.id === proofPoint.id ? { ...item, useCaseIds } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </ItemRow>
+            ))}
+          </CollectionBlock>
+        </AccordionSection>
+
+        <AccordionSection
+          sectionId="disqualifiers"
+          open={openSection === "disqualifiers"}
+          summary={summaries.disqualifiers}
+          highlighted={highlightedSection === "disqualifiers"}
+          onToggle={() => handleToggleSection("disqualifiers")}
+        >
+          <CollectionBlock
             title="Firmographic Disqualifiers"
             description="Firmographic conditions that make a company a poor fit (Why Them)."
             addLabel="disqualifier"
-            onAdd={() =>
+            isEmpty={
+              draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.length === 0
+            }
+            onAdd={() => {
+              const item = createBlankFirmographicDisqualifier();
               markDirty({
                 ...draft,
                 decisionStrategy: {
@@ -1379,182 +1667,206 @@ export function VendorRefinementMode({
                     ...draft.decisionStrategy.idealCustomerProfile,
                     firmographicDisqualifiers: [
                       ...draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers,
-                      createBlankFirmographicDisqualifier(),
+                      item,
                     ],
                   },
                 },
-              })
-            }
-          />
-          {draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.map(
-            (disqualifier: FirmographicDisqualifier) => (
-              <RowCard
-                key={disqualifier.id}
-                removeLabel="disqualifier"
-                onRemove={() => markDirty(removeFirmographicDisqualifier(draft, disqualifier.id))}
+              });
+              setExpanded("firmographicDisqualifiers", item.id);
+            }}
+          >
+            {draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.map(
+              (disqualifier: FirmographicDisqualifier) => (
+                <ItemRow
+                  key={disqualifier.id}
+                  primary={labelForFirmographicDisqualifier(disqualifier)}
+                  secondary={disqualifier.whyItMatters.trim() || undefined}
+                  expanded={isExpanded("firmographicDisqualifiers", disqualifier.id)}
+                  onToggle={() => handleToggleItem("firmographicDisqualifiers", disqualifier.id)}
+                  onRemove={() => {
+                    markDirty(removeFirmographicDisqualifier(draft, disqualifier.id));
+                    setExpanded("firmographicDisqualifiers", null);
+                  }}
+                  removeLabel="disqualifier"
+                >
+                  <TextField
+                    label="Condition"
+                    value={disqualifier.condition}
+                    onChange={(value) =>
+                      markDirty({
+                        ...draft,
+                        decisionStrategy: {
+                          ...draft.decisionStrategy,
+                          idealCustomerProfile: {
+                            ...draft.decisionStrategy.idealCustomerProfile,
+                            firmographicDisqualifiers:
+                              draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.map(
+                                (item) =>
+                                  item.id === disqualifier.id
+                                    ? { ...item, condition: value }
+                                    : item,
+                              ),
+                          },
+                        },
+                      })
+                    }
+                  />
+                  <TextField
+                    label="Why it matters"
+                    value={disqualifier.whyItMatters}
+                    onChange={(value) =>
+                      markDirty({
+                        ...draft,
+                        decisionStrategy: {
+                          ...draft.decisionStrategy,
+                          idealCustomerProfile: {
+                            ...draft.decisionStrategy.idealCustomerProfile,
+                            firmographicDisqualifiers:
+                              draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.map(
+                                (item) =>
+                                  item.id === disqualifier.id
+                                    ? { ...item, whyItMatters: value }
+                                    : item,
+                              ),
+                          },
+                        },
+                      })
+                    }
+                  />
+                </ItemRow>
+              ),
+            )}
+          </CollectionBlock>
+
+          <CollectionBlock
+            title="Red Flags"
+            description="Conditions that caution against or disqualify an account (Why Them and/or Why Us)."
+            addLabel="red flag"
+            isEmpty={draft.decisionStrategy.redFlags.length === 0}
+            onAdd={() => {
+              const item = createBlankRedFlag();
+              markDirty({
+                ...draft,
+                decisionStrategy: {
+                  ...draft.decisionStrategy,
+                  redFlags: [...draft.decisionStrategy.redFlags, item],
+                },
+              });
+              setExpanded("redFlags", item.id);
+            }}
+          >
+            {draft.decisionStrategy.redFlags.map((redFlag: RedFlag) => (
+              <ItemRow
+                key={redFlag.id}
+                primary={labelForRedFlag(redFlag)}
+                secondary={`${redFlag.severity === "disqualifying" ? "Disqualifying" : "Cautionary"}${
+                  redFlag.affectedDecisionGroups.length
+                    ? ` · ${redFlag.affectedDecisionGroups
+                        .map((group) => (group === "whyThem" ? "Why Them" : "Why Us"))
+                        .join(", ")}`
+                    : ""
+                }`}
+                expanded={isExpanded("redFlags", redFlag.id)}
+                onToggle={() => handleToggleItem("redFlags", redFlag.id)}
+                onRemove={() => {
+                  markDirty(removeRedFlag(draft, redFlag.id));
+                  setExpanded("redFlags", null);
+                }}
+                removeLabel="red flag"
               >
                 <TextField
                   label="Condition"
-                  value={disqualifier.condition}
+                  value={redFlag.condition}
                   onChange={(value) =>
                     markDirty({
                       ...draft,
                       decisionStrategy: {
                         ...draft.decisionStrategy,
-                        idealCustomerProfile: {
-                          ...draft.decisionStrategy.idealCustomerProfile,
-                          firmographicDisqualifiers:
-                            draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.map(
-                              (item) =>
-                                item.id === disqualifier.id ? { ...item, condition: value } : item,
-                            ),
-                        },
+                        redFlags: draft.decisionStrategy.redFlags.map((item) =>
+                          item.id === redFlag.id ? { ...item, condition: value } : item,
+                        ),
                       },
                     })
                   }
                 />
                 <TextField
                   label="Why it matters"
-                  value={disqualifier.whyItMatters}
+                  value={redFlag.whyItMatters}
                   onChange={(value) =>
                     markDirty({
                       ...draft,
                       decisionStrategy: {
                         ...draft.decisionStrategy,
-                        idealCustomerProfile: {
-                          ...draft.decisionStrategy.idealCustomerProfile,
-                          firmographicDisqualifiers:
-                            draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.map(
-                              (item) =>
-                                item.id === disqualifier.id
-                                  ? { ...item, whyItMatters: value }
-                                  : item,
-                            ),
-                        },
-                      },
-                    })
-                  }
-                />
-              </RowCard>
-            ),
-          )}
-          {draft.decisionStrategy.idealCustomerProfile.firmographicDisqualifiers.length === 0 && (
-            <EmptyCollectionNotice />
-          )}
-        </div>
-
-        <div className="space-y-3">
-          <SectionHeader
-            title="Red Flags"
-            description="Conditions that caution against or disqualify pursuing an account (Why Them and/or Why Us)."
-            addLabel="red flag"
-            onAdd={() =>
-              markDirty({
-                ...draft,
-                decisionStrategy: {
-                  ...draft.decisionStrategy,
-                  redFlags: [...draft.decisionStrategy.redFlags, createBlankRedFlag()],
-                },
-              })
-            }
-          />
-          {draft.decisionStrategy.redFlags.map((redFlag: RedFlag) => (
-            <RowCard
-              key={redFlag.id}
-              removeLabel="red flag"
-              onRemove={() => markDirty(removeRedFlag(draft, redFlag.id))}
-            >
-              <TextField
-                label="Condition"
-                value={redFlag.condition}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    decisionStrategy: {
-                      ...draft.decisionStrategy,
-                      redFlags: draft.decisionStrategy.redFlags.map((item) =>
-                        item.id === redFlag.id ? { ...item, condition: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <TextField
-                label="Why it matters"
-                value={redFlag.whyItMatters}
-                onChange={(value) =>
-                  markDirty({
-                    ...draft,
-                    decisionStrategy: {
-                      ...draft.decisionStrategy,
-                      redFlags: draft.decisionStrategy.redFlags.map((item) =>
-                        item.id === redFlag.id ? { ...item, whyItMatters: value } : item,
-                      ),
-                    },
-                  })
-                }
-              />
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-zinc-700">Severity</span>
-                <select
-                  value={redFlag.severity}
-                  onChange={(event) =>
-                    markDirty({
-                      ...draft,
-                      decisionStrategy: {
-                        ...draft.decisionStrategy,
                         redFlags: draft.decisionStrategy.redFlags.map((item) =>
-                          item.id === redFlag.id
-                            ? { ...item, severity: event.target.value as RedFlagSeverity }
-                            : item,
+                          item.id === redFlag.id ? { ...item, whyItMatters: value } : item,
                         ),
                       },
                     })
                   }
-                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                >
-                  <option value="cautionary">Cautionary</option>
-                  <option value="disqualifying">Disqualifying</option>
-                </select>
-              </label>
-              <fieldset className="block text-sm">
-                <span className="mb-1 block font-medium text-zinc-700">Affected decision groups</span>
-                <div className="flex gap-4">
-                  {(["whyThem", "whyUs"] as RedFlagDecisionGroup[]).map((group) => (
-                    <label key={group} className="flex items-center gap-2 text-sm text-zinc-700">
-                      <input
-                        type="checkbox"
-                        checked={redFlag.affectedDecisionGroups.includes(group)}
-                        onChange={(event) =>
-                          markDirty({
-                            ...draft,
-                            decisionStrategy: {
-                              ...draft.decisionStrategy,
-                              redFlags: draft.decisionStrategy.redFlags.map((item) => {
-                                if (item.id !== redFlag.id) {
-                                  return item;
-                                }
-                                const nextGroups = event.target.checked
-                                  ? [...item.affectedDecisionGroups, group]
-                                  : item.affectedDecisionGroups.filter(
-                                      (existing) => existing !== group,
-                                    );
-                                return { ...item, affectedDecisionGroups: nextGroups };
-                              }),
-                            },
-                          })
-                        }
-                      />
-                      {group === "whyThem" ? "Why Them" : "Why Us"}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            </RowCard>
-          ))}
-          {draft.decisionStrategy.redFlags.length === 0 && <EmptyCollectionNotice />}
-        </div>
-      </FrameworkSection>
+                />
+                <label className="block text-sm">
+                  <span className="mb-0.5 block font-medium text-zinc-700">Severity</span>
+                  <select
+                    value={redFlag.severity}
+                    onChange={(event) =>
+                      markDirty({
+                        ...draft,
+                        decisionStrategy: {
+                          ...draft.decisionStrategy,
+                          redFlags: draft.decisionStrategy.redFlags.map((item) =>
+                            item.id === redFlag.id
+                              ? { ...item, severity: event.target.value as RedFlagSeverity }
+                              : item,
+                          ),
+                        },
+                      })
+                    }
+                    className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
+                  >
+                    <option value="cautionary">Cautionary</option>
+                    <option value="disqualifying">Disqualifying</option>
+                  </select>
+                </label>
+                <fieldset className="block text-sm">
+                  <span className="mb-0.5 block font-medium text-zinc-700">
+                    Affected decision groups
+                  </span>
+                  <div className="flex gap-4">
+                    {(["whyThem", "whyUs"] as RedFlagDecisionGroup[]).map((group) => (
+                      <label key={group} className="flex items-center gap-2 text-sm text-zinc-700">
+                        <input
+                          type="checkbox"
+                          checked={redFlag.affectedDecisionGroups.includes(group)}
+                          onChange={(event) =>
+                            markDirty({
+                              ...draft,
+                              decisionStrategy: {
+                                ...draft.decisionStrategy,
+                                redFlags: draft.decisionStrategy.redFlags.map((item) => {
+                                  if (item.id !== redFlag.id) {
+                                    return item;
+                                  }
+                                  const nextGroups = event.target.checked
+                                    ? [...item.affectedDecisionGroups, group]
+                                    : item.affectedDecisionGroups.filter(
+                                        (existing) => existing !== group,
+                                      );
+                                  return { ...item, affectedDecisionGroups: nextGroups };
+                                }),
+                              },
+                            })
+                          }
+                        />
+                        {group === "whyThem" ? "Why Them" : "Why Us"}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              </ItemRow>
+            ))}
+          </CollectionBlock>
+        </AccordionSection>
+      </div>
 
       {errors.length > 0 && (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -1568,15 +1880,17 @@ export function VendorRefinementMode({
       )}
 
       {isSaved && errors.length === 0 && (
-        <p className="text-sm font-medium text-green-700">Approved (ready for the parent to save).</p>
+        <p className="text-sm font-medium text-green-700">
+          Approved (ready for the parent to save).
+        </p>
       )}
 
-      <div className="flex justify-end border-t border-zinc-200 pt-6">
+      <div className="flex justify-end border-t border-zinc-200 pt-4">
         <button
           type="button"
           onClick={handleApprove}
           disabled={isSaving}
-          className="rounded-xl bg-zinc-950 px-6 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
+          className="rounded-xl bg-zinc-950 px-6 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
         >
           {isSaving ? "Validating..." : "Approve"}
         </button>

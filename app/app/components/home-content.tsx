@@ -62,6 +62,15 @@ export function HomeContent() {
               workspace={isCompact}
             />
           </div>
+
+          {!isCompact && (
+            <p className="mt-10 text-sm text-zinc-500">
+              Setting up GTM Brain for your product?{" "}
+              <a href="/vendor" className="font-medium text-zinc-900 underline underline-offset-2">
+                Onboard your Vendor Profile
+              </a>
+            </p>
+          )}
         </div>
       </main>
     </div>

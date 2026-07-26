@@ -5,6 +5,13 @@ const assert = require("node:assert/strict");
 const {
   buildRefinementDraft,
   buildValuePropositionPreview,
+  buildRefinementSectionSummaries,
+  findFirstSectionWithValidationErrors,
+  listMapperDrivingCollectionPresence,
+  primaryEditableFieldForCollection,
+  REFINEMENT_COLLECTION_EDITABLE_FIELDS,
+  toggleExpandedItemId,
+  toggleOpenSection,
   validateRefinementDraft,
   createBlankCustomerProblem,
   createBlankDesiredOutcome,
@@ -402,4 +409,244 @@ test("manual enrichment flow: add linked items and approve", () => {
   const result = validateRefinementDraft(draft);
   assert.strictEqual(result.isValid, true);
   assert.deepStrictEqual(validateVendorProfile(result.profile), []);
+});
+
+test("section summaries: derived from live collection counts without raw IDs", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  const summaries = buildRefinementSectionSummaries(draft);
+
+  assert.match(summaries.whyThem, /1 Problem/);
+  assert.match(summaries.whyThem, /1 Outcome/);
+  assert.match(summaries.whyThem, /1 Buying reason/);
+  assert.match(summaries.whyNow, /1 Signal/);
+  assert.match(summaries.whyUs, /1 Capability/);
+  assert.match(summaries.whyUs, /1 Use case/);
+  assert.match(summaries.disqualifiers, /1 Disqualifier/);
+  assert.match(summaries.disqualifiers, /1 Red flag/);
+
+  const joined = Object.values(summaries).join(" ");
+  assert.doesNotMatch(joined, /problem-unstructured/);
+  assert.doesNotMatch(joined, /capability-evidence/);
+  assert.doesNotMatch(joined, /red-flag-no-named/);
+});
+
+test("section summaries and mapper presence: empty draft still represents every collection", () => {
+  const draft = buildRefinementDraft({});
+  const presence = listMapperDrivingCollectionPresence(draft);
+  assert.deepStrictEqual(presence.sort(), [
+    "buyingReasons",
+    "capabilities",
+    "commonAlternatives",
+    "customerProblems",
+    "desiredOutcomes",
+    "firmographicDisqualifiers",
+    "icpCriteria",
+    "icpExamples",
+    "offering",
+    "proofPoints",
+    "redFlags",
+    "relevantDifferentiation",
+    "useCases",
+    "whyNowSignals",
+  ]);
+
+  const summaries = buildRefinementSectionSummaries(draft);
+  assert.match(summaries.whyThem, /0 Problems/);
+  assert.match(summaries.whyNow, /0 Signals/);
+});
+
+test("findFirstSectionWithValidationErrors: maps broken refs to owning section", () => {
+  assert.strictEqual(
+    findFirstSectionWithValidationErrors([
+      'Desired outcome "outcome-1" references unknown problem "missing".',
+    ]),
+    "whyThem",
+  );
+  assert.strictEqual(
+    findFirstSectionWithValidationErrors([
+      'Capability "capability-1" references unknown outcome "missing".',
+    ]),
+    "whyUs",
+  );
+  assert.strictEqual(findFirstSectionWithValidationErrors([]), null);
+});
+
+test("collapsing/section helpers do not mutate draft data", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  const before = structuredClone(draft);
+  buildRefinementSectionSummaries(draft);
+  findFirstSectionWithValidationErrors(["something"]);
+  listMapperDrivingCollectionPresence(draft);
+  toggleOpenSection("offering", "whyThem");
+  toggleExpandedItemId("problem-1", "problem-2");
+  assert.deepStrictEqual(draft, before);
+});
+
+test("toggleOpenSection: Collapse on open section closes it", () => {
+  assert.strictEqual(toggleOpenSection("whyThem", "whyThem"), null);
+  assert.strictEqual(toggleOpenSection(null, "whyThem"), "whyThem");
+  assert.strictEqual(toggleOpenSection("offering", "whyThem"), "whyThem");
+});
+
+test("toggleExpandedItemId: Done/collapse clears only that item", () => {
+  assert.strictEqual(toggleExpandedItemId("problem-1", "problem-1"), null);
+  assert.strictEqual(toggleExpandedItemId(null, "problem-1"), "problem-1");
+  assert.strictEqual(toggleExpandedItemId("problem-1", "problem-2"), "problem-2");
+  assert.strictEqual(toggleExpandedItemId(undefined, "problem-1"), "problem-1");
+});
+
+test("REFINEMENT_COLLECTION_EDITABLE_FIELDS: every collection lists a primary field first", () => {
+  const expectedCollections = [
+    "offeringIdentity",
+    "customerProblems",
+    "desiredOutcomes",
+    "buyingReasons",
+    "icpCriteria",
+    "icpExamples",
+    "whyNowSignals",
+    "capabilities",
+    "useCases",
+    "commonAlternatives",
+    "relevantDifferentiation",
+    "proofPoints",
+    "firmographicDisqualifiers",
+    "redFlags",
+  ];
+  assert.deepStrictEqual(
+    Object.keys(REFINEMENT_COLLECTION_EDITABLE_FIELDS).sort(),
+    [...expectedCollections].sort(),
+  );
+
+  for (const collection of expectedCollections) {
+    const fields = REFINEMENT_COLLECTION_EDITABLE_FIELDS[collection];
+    assert.ok(fields.length >= 1, `${collection} must expose editable fields`);
+    assert.strictEqual(primaryEditableFieldForCollection(collection), fields[0]);
+    assert.ok(!fields.includes("id"), `${collection} must not expose id as editable`);
+  }
+
+  assert.strictEqual(primaryEditableFieldForCollection("customerProblems"), "statement");
+  assert.strictEqual(primaryEditableFieldForCollection("capabilities"), "name");
+  assert.strictEqual(primaryEditableFieldForCollection("whyNowSignals"), "signal");
+  assert.strictEqual(primaryEditableFieldForCollection("proofPoints"), "summary");
+  assert.strictEqual(primaryEditableFieldForCollection("icpCriteria"), "description");
+  assert.strictEqual(primaryEditableFieldForCollection("firmographicDisqualifiers"), "condition");
+});
+
+test("editing primary field preserves item id and relationships", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  const problem = draft.productKnowledge.customerProblems[0];
+  const outcome = draft.productKnowledge.desiredOutcomes[0];
+  assert.ok(problem);
+  assert.ok(outcome);
+
+  const problemId = problem.id;
+  const nextProblems = draft.productKnowledge.customerProblems.map((item) =>
+    item.id === problemId ? { ...item, statement: "Edited primary problem text" } : item,
+  );
+  const editedProblem = nextProblems.find((item) => item.id === problemId);
+  assert.ok(editedProblem);
+  assert.strictEqual(editedProblem.id, problemId);
+  assert.strictEqual(editedProblem.impact, problem.impact);
+  assert.strictEqual(editedProblem.statement, "Edited primary problem text");
+
+  const outcomeId = outcome.id;
+  const originalProblemIds = [...outcome.problemIds];
+  const nextOutcomes = draft.productKnowledge.desiredOutcomes.map((item) =>
+    item.id === outcomeId ? { ...item, statement: "Edited outcome primary" } : item,
+  );
+  const editedOutcome = nextOutcomes.find((item) => item.id === outcomeId);
+  assert.ok(editedOutcome);
+  assert.strictEqual(editedOutcome.id, outcomeId);
+  assert.deepStrictEqual(editedOutcome.problemIds, originalProblemIds);
+
+  const capability = draft.productKnowledge.capabilities[0];
+  assert.ok(capability);
+  const capabilityId = capability.id;
+  const originalCapabilityProblemIds = [...capability.problemIds];
+  const originalCapabilityOutcomeIds = [...capability.outcomeIds];
+  const editedCapability = {
+    ...capability,
+    name: "Edited capability name",
+  };
+  assert.strictEqual(editedCapability.id, capabilityId);
+  assert.deepStrictEqual(editedCapability.problemIds, originalCapabilityProblemIds);
+  assert.deepStrictEqual(editedCapability.outcomeIds, originalCapabilityOutcomeIds);
+});
+
+test("blank and existing items share the same editable-field definition", () => {
+  const blankProblem = createBlankCustomerProblem();
+  const blankCapability = createBlankCapability();
+  const blankSignal = createBlankWhyNowSignal();
+
+  assert.deepStrictEqual(
+    Object.keys(blankProblem).filter((key) => key !== "id").sort(),
+    [...REFINEMENT_COLLECTION_EDITABLE_FIELDS.customerProblems].sort(),
+  );
+  assert.deepStrictEqual(
+    Object.keys(blankCapability).filter((key) => key !== "id").sort(),
+    [...REFINEMENT_COLLECTION_EDITABLE_FIELDS.capabilities].sort(),
+  );
+  assert.deepStrictEqual(
+    Object.keys(blankSignal).filter((key) => key !== "id").sort(),
+    [...REFINEMENT_COLLECTION_EDITABLE_FIELDS.whyNowSignals].sort(),
+  );
+
+  const draft = buildRefinementDraft(fullResearchDraft);
+  const existingProblem = draft.productKnowledge.customerProblems[0];
+  assert.ok(existingProblem);
+  for (const field of REFINEMENT_COLLECTION_EDITABLE_FIELDS.customerProblems) {
+    assert.ok(field in existingProblem);
+    assert.ok(field in blankProblem);
+  }
+});
+
+test("offering description edits update the canonical draft field and survive section toggles", () => {
+  const draft = buildRefinementDraft(fullResearchDraft);
+  assert.ok(draft.productKnowledge.offering.length > 0);
+
+  const editedOffering = "Edited short product description for the draft";
+  const next = {
+    ...draft,
+    vendorName: "Edited Vendor Name",
+    websiteUrl: "https://edited.example",
+    productKnowledge: {
+      ...draft.productKnowledge,
+      offering: editedOffering,
+    },
+  };
+
+  assert.strictEqual(next.productKnowledge.offering, editedOffering);
+  assert.strictEqual(next.vendorName, "Edited Vendor Name");
+  assert.strictEqual(next.websiteUrl, "https://edited.example");
+
+  // Collapsing/reopening and switching accordion sections only change UI state —
+  // they must not rewrite draft offering fields.
+  const openAfterCollapse = toggleOpenSection("offering", "offering");
+  assert.strictEqual(openAfterCollapse, null);
+  const openWhyThem = toggleOpenSection(openAfterCollapse, "whyThem");
+  assert.strictEqual(openWhyThem, "whyThem");
+  const reopenOffering = toggleOpenSection(openWhyThem, "offering");
+  assert.strictEqual(reopenOffering, "offering");
+
+  assert.strictEqual(next.productKnowledge.offering, editedOffering);
+  assert.strictEqual(next.vendorName, "Edited Vendor Name");
+  assert.strictEqual(next.websiteUrl, "https://edited.example");
+
+  const validation = validateRefinementDraft(next);
+  assert.strictEqual(validation.isValid, true);
+  assert.strictEqual(validation.profile.productKnowledge.offering, editedOffering);
+});
+
+test("refinement UI documents automatic draft updates for Offering fields", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(
+    path.join(__dirname, "../../components/vendor-refinement-mode.tsx"),
+    "utf8",
+  );
+  assert.match(source, /Offering \(short product description\)/);
+  assert.match(source, /productKnowledge:\s*\{\s*\.\.\.draft\.productKnowledge,\s*offering:\s*value/);
+  assert.match(source, /Changes are saved automatically in this draft\./);
+  assert.match(source, /markDirty\(\{\s*\.\.\.draft,\s*vendorName:\s*value\s*\}\)/);
+  assert.match(source, /markDirty\(\{\s*\.\.\.draft,\s*websiteUrl:\s*value\s*\}\)/);
 });
