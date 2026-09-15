@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { GtmBriefStatus } from "../types/gtm-brief";
+import type { EvaluateExperienceStatus } from "../lib/intelligence/companyEvaluateClient";
 import { GtmBriefExperience } from "./gtm-brief-experience";
 
 export function HomeContent() {
   const [isCompact, setIsCompact] = useState(false);
 
-  function handleStatusChange(status: GtmBriefStatus) {
+  function handleStatusChange(status: EvaluateExperienceStatus) {
     setIsCompact(status === "complete");
   }
 
@@ -43,7 +43,7 @@ export function HomeContent() {
                   : "text-4xl sm:text-5xl sm:leading-[1.1]"
               }`}
             >
-              Generate your GTM Brief
+              Does this account deserve outbound time now?
             </h1>
 
             <p
@@ -51,8 +51,9 @@ export function HomeContent() {
                 isCompact ? "hidden" : ""
               }`}
             >
-              Know why this account, why now, why us, who to engage, and how to
-              win.
+              Enter a target-company website. GTM Brain researches the account
+              against your approved Vendor Profile and returns Invest, Monitor,
+              or Skip.
             </p>
           </div>
 

@@ -18,7 +18,6 @@ import { researchCompanyFromUrl } from "./companyResearchService.ts";
 import { mapEvidenceToDecisionGroups } from "./evidenceMatchingService.ts";
 import { generateRecommendation } from "./recommendationEngine.ts";
 import type { VendorProfile } from "./vendorProfile.ts";
-import { gtmBrainVendorProfile } from "./vendorProfile.test-data.ts";
 
 function toErrorBody(code: string, message: string): FinalEvaluationResponse {
   return {
@@ -92,10 +91,13 @@ export type CanonicalEvaluateResult = {
 /**
  * Canonical evaluate pipeline. Inject `research` in tests; production uses
  * live `researchCompanyFromUrl`.
+ *
+ * `vendorProfile` is required — callers must pass an explicit validated profile.
+ * There is no fixture default.
  */
 export async function runCanonicalEvaluate(
   domain: string,
-  vendorProfile: VendorProfile = gtmBrainVendorProfile,
+  vendorProfile: VendorProfile,
   research: ResearchFn = researchCompanyFromUrl,
 ): Promise<CanonicalEvaluateResult> {
   const researchResult = await research(domain, vendorProfile);
