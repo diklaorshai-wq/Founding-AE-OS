@@ -508,6 +508,218 @@ test("mapEvidenceToDecisionGroups: identical inputs produce identical outputs on
   assert.deepStrictEqual(first, second);
 });
 
+// --- Group-specific evidence admissibility (approved evidence-quality checkpoint) ---
+//
+// These tests cover ONLY what classifyFindingsForGroup() actually inspects:
+// `source`, `date`, and `sourceVerified`. They never assert detection of
+// claim-text semantics (two-sidedness, evergreen-vs-dated meaning, etc.) —
+// those remain prompt-only and are not exercised here.
+
+test("mapEvidenceToDecisionGroups: Why Now requires a known date — missing/unknown date prevents a pass even with a verified source", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    whyNowEvidence: [
+      makeFinding({
+        claim: "Undated timing claim.",
+        connectedVendorItemId: "signal-1",
+        date: "unknown",
+        sourceVerified: true,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyNow[0].status, "unknown");
+});
+
+test("mapEvidenceToDecisionGroups: Why Now passes with a known date and a confirmed-retrieved source", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    whyNowEvidence: [
+      makeFinding({
+        claim: "Dated timing claim.",
+        connectedVendorItemId: "signal-1",
+        date: "2026-06-20",
+        sourceVerified: true,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyNow[0].status, "pass");
+});
+
+test("mapEvidenceToDecisionGroups: Why Now does not pass when the source is confirmed NOT retrieved, even with a known date", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    whyNowEvidence: [
+      makeFinding({
+        claim: "Dated but unverified claim.",
+        connectedVendorItemId: "signal-1",
+        date: "2026-06-20",
+        sourceVerified: false,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyNow[0].status, "unknown");
+});
+
+test("mapEvidenceToDecisionGroups: Why Now passes with a known date when verification metadata is simply unavailable (sourceVerified absent)", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    whyNowEvidence: [
+      makeFinding({
+        claim: "Dated claim, no verification metadata.",
+        connectedVendorItemId: "signal-1",
+        date: "2026-06-20",
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyNow[0].status, "pass");
+});
+
+test("mapEvidenceToDecisionGroups: Why Them does NOT require a known date — an unknown date never blocks a stable firmographic/scale/workload fact", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    relevantBusinessEvidence: [
+      makeFinding({
+        claim: "Stable firmographic fact.",
+        connectedVendorItemId: "problem-1",
+        date: "unknown",
+        sourceVerified: true,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyThem[0].status, "pass");
+});
+
+test("mapEvidenceToDecisionGroups: Why Them still requires a usable source — a confirmed-not-retrieved source blocks the pass", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    relevantBusinessEvidence: [
+      makeFinding({
+        claim: "Confirmed-unretrieved source.",
+        connectedVendorItemId: "problem-1",
+        sourceVerified: false,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyThem[0].status, "unknown");
+});
+
+test("mapEvidenceToDecisionGroups: Why Them requires a non-empty source string regardless of sourceVerified", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    relevantBusinessEvidence: [
+      makeFinding({
+        claim: "Empty source.",
+        connectedVendorItemId: "problem-1",
+        source: "",
+        sourceVerified: true,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyThem[0].status, "unknown");
+});
+
+test("mapEvidenceToDecisionGroups: Why Us does NOT require a known date — a valid VendorProfile connection with an unknown date still passes", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    whyUsEvidence: [
+      makeFinding({
+        claim: "Capability fit, undated.",
+        connectedVendorItemId: "capability-1",
+        date: "unknown",
+        sourceVerified: true,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyUs[0].status, "pass");
+});
+
+test("mapEvidenceToDecisionGroups: Why Us does not pass when its source is confirmed NOT retrieved", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    whyUsEvidence: [
+      makeFinding({
+        claim: "Unverified capability claim.",
+        connectedVendorItemId: "capability-1",
+        sourceVerified: false,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyUs[0].status, "unknown");
+});
+
+test("mapEvidenceToDecisionGroups: one inadmissible supportive finding plus one admissible supportive finding still passes, and both remain visible as evidence", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    relevantBusinessEvidence: [
+      makeFinding({
+        claim: "Confirmed-unretrieved, inadmissible.",
+        connectedVendorItemId: "problem-1",
+        sourceVerified: false,
+      }),
+      makeFinding({
+        claim: "Confirmed-retrieved, admissible.",
+        connectedVendorItemId: "outcome-1",
+        sourceVerified: true,
+      }),
+    ],
+  });
+
+  const result = mapEvidenceToDecisionGroups(company, vendor);
+  assert.strictEqual(result.whyThem[0].status, "pass");
+  assert.deepStrictEqual(result.whyThem[0].evidence, [
+    "Confirmed-unretrieved, inadmissible.",
+    "Confirmed-retrieved, admissible.",
+  ]);
+});
+
+test("mapEvidenceToDecisionGroups: a hard disqualifier still fails regardless of sourceVerified or date (admissibility checks never apply to disqualifiers)", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    relevantBusinessEvidence: [
+      makeFinding({
+        claim: "Disqualifying, even though unverified and undated.",
+        connectedVendorItemId: "fd-1",
+        date: "unknown",
+        sourceVerified: false,
+      }),
+    ],
+  });
+
+  const result = mapEvidenceToDecisionGroups(company, vendor);
+  assert.strictEqual(result.whyThem[0].status, "fail");
+  assert.strictEqual(result.whyThem[0].significant, true);
+});
+
+test("mapEvidenceToDecisionGroups: a contradictory finding still counts toward 'unknown' regardless of sourceVerified (admissibility gates supportive findings only)", () => {
+  const vendor = makeVendorProfile();
+  const company = makeCompanyProfile({
+    relevantBusinessEvidence: [
+      makeFinding({
+        claim: "Supportive, admissible.",
+        connectedVendorItemId: "problem-1",
+        sourceVerified: true,
+      }),
+      makeFinding({
+        claim: "Contradictory, unverified.",
+        connectedVendorItemId: "outcome-1",
+        decisionImpact: "contradictory",
+        sourceVerified: false,
+      }),
+    ],
+  });
+
+  assert.strictEqual(mapEvidenceToDecisionGroups(company, vendor).whyThem[0].status, "unknown");
+});
+
 test("mapEvidenceToDecisionGroups: has no network, Gemini, environment, async, or model dependency", async () => {
   const previousKey = process.env.GEMINI_API_KEY;
   delete process.env.GEMINI_API_KEY;

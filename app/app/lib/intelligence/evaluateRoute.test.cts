@@ -199,6 +199,219 @@ test("runCanonicalEvaluate: successful research produces canonical decision evid
   assert.strictEqual(result.body.evidenceBundle[0].decisionImpact, "supportive");
 });
 
+// --- Group-specific evidence admissibility, end-to-end through the canonical pipeline ---
+//
+// These integration tests cover ONLY runtime-enforced behavior (source
+// verification tri-state, date requirements per group). They never assert
+// detection of claim-text semantics (two-sidedness, evergreen-vs-dated
+// meaning) — a mocked response is not improved by the prompt, so none of
+// these mocks simulate "weak but structurally admissible" evidence as if
+// the runtime could recognize the weakness; each mock is deliberately
+// shaped to test one specific, actually-enforced rule.
+
+test("runCanonicalEvaluate: an unverified Why Now finding does not pass Why Now, and does not cause Skip (Why Now alone can never Skip)", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    relevantBusinessEvidence: [finding({ claim: "Firmographic fit.", sourceVerified: true })],
+    whyNowEvidence: [
+      finding({ claim: "Unverified timing.", connectedVendorItemId: "new-territories", sourceVerified: false }),
+    ],
+    whyUsEvidence: [
+      finding({ claim: "Capability fit.", connectedVendorItemId: "evidence-based-evaluation", sourceVerified: true }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  assert.strictEqual(result.httpStatus, 200);
+  assert.notStrictEqual(result.body.decisionOutcome, "Skip");
+  assert.strictEqual(result.body.decisionOutcome, "Monitor");
+});
+
+test("runCanonicalEvaluate: an unknown Why Now date never causes Skip — it only prevents Invest", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    relevantBusinessEvidence: [finding({ claim: "Firmographic fit.", sourceVerified: true })],
+    whyNowEvidence: [
+      finding({
+        claim: "Undated timing.",
+        connectedVendorItemId: "new-territories",
+        date: "unknown",
+        sourceVerified: true,
+      }),
+    ],
+    whyUsEvidence: [
+      finding({ claim: "Capability fit.", connectedVendorItemId: "evidence-based-evaluation", sourceVerified: true }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  assert.strictEqual(result.httpStatus, 200);
+  assert.notStrictEqual(result.body.decisionOutcome, "Skip");
+  assert.strictEqual(result.body.decisionOutcome, "Monitor");
+});
+
+test("runCanonicalEvaluate: a Why Them finding with an unknown date still contributes to Invest when its source is verified (date is not mandatory for Why Them)", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    relevantBusinessEvidence: [
+      finding({ claim: "Stable firmographic fact.", date: "unknown", sourceVerified: true }),
+    ],
+    whyNowEvidence: [
+      finding({
+        claim: "Dated timing.",
+        connectedVendorItemId: "new-territories",
+        date: "2026-06-20",
+        sourceVerified: true,
+      }),
+    ],
+    whyUsEvidence: [
+      finding({ claim: "Capability fit.", connectedVendorItemId: "evidence-based-evaluation", sourceVerified: true }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  assert.strictEqual(result.httpStatus, 200);
+  assert.strictEqual(result.body.decisionOutcome, "Invest");
+});
+
+test("runCanonicalEvaluate: verification metadata unavailable (sourceVerified absent on every finding) is treated as admissible, not blocked", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    relevantBusinessEvidence: [finding({ claim: "Firmographic fit, no verification metadata." })],
+    whyNowEvidence: [
+      finding({ claim: "Dated timing, no verification metadata.", connectedVendorItemId: "new-territories" }),
+    ],
+    whyUsEvidence: [
+      finding({ claim: "Capability fit, no verification metadata.", connectedVendorItemId: "evidence-based-evaluation" }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  assert.strictEqual(result.httpStatus, 200);
+  assert.strictEqual(result.body.decisionOutcome, "Invest");
+});
+
+test("runCanonicalEvaluate: a valid Why Us VendorProfile connection with a verified source contributes to Invest", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    relevantBusinessEvidence: [finding({ claim: "Firmographic fit.", sourceVerified: true })],
+    whyNowEvidence: [
+      finding({
+        claim: "Dated trigger.",
+        connectedVendorItemId: "new-territories",
+        date: "2026-06-20",
+        sourceVerified: true,
+      }),
+    ],
+    whyUsEvidence: [
+      finding({ claim: "Valid capability connection.", connectedVendorItemId: "evidence-based-evaluation", sourceVerified: true }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  assert.strictEqual(result.httpStatus, 200);
+  assert.strictEqual(result.body.decisionOutcome, "Invest");
+});
+
+test("runCanonicalEvaluate: an invalid connectedVendorItemId never contributes to any gate's decision, regardless of sourceVerified (it is still shown as evidence — only the decision-mapping step filters it out)", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    whyUsEvidence: [
+      finding({ claim: "Cites an id that does not exist.", connectedVendorItemId: "no-such-id", sourceVerified: true }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  assert.strictEqual(result.httpStatus, 200);
+  // No admissible evidence in any group -> Monitor, never an unsupported Invest or an incorrect Skip.
+  assert.strictEqual(result.body.decisionOutcome, "Monitor");
+  // The evidenceBundle is a raw, honest pass-through of what research returned
+  // (buildDecisionEvidenceBundle does not re-validate vendor ids) — only the
+  // decision-mapping step (mapEvidenceToDecisionGroups) ignores this finding.
+  assert.strictEqual(result.body.evidenceBundle.length, 1);
+  assert.strictEqual(result.body.evidenceBundle[0].connectedVendorItemId, "no-such-id");
+});
+
+test("runCanonicalEvaluate: positive Invest control using only structurally-admissible evidence (verified sources, a known Why Now date, valid VendorProfile connections)", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    relevantBusinessEvidence: [finding({ claim: "Firmographic fit.", sourceVerified: true })],
+    whyNowEvidence: [
+      finding({
+        claim: "Dated trigger.",
+        connectedVendorItemId: "new-territories",
+        date: "2026-06-20",
+        sourceVerified: true,
+      }),
+    ],
+    whyUsEvidence: [
+      finding({ claim: "Two-sided capability fit.", connectedVendorItemId: "evidence-based-evaluation", sourceVerified: true }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  assert.strictEqual(result.httpStatus, 200);
+  assert.strictEqual(result.body.decisionOutcome, "Invest");
+  assert.strictEqual(result.body.evidenceBundle.length, 3);
+});
+
+test("runCanonicalEvaluate: evidenceBundle carries sourceVerified through only when it was actually determined", async () => {
+  const profile = {
+    ...createEmptyCompanyProfile(),
+    companyIdentity: { name: "AcmeCo", url: "https://acme.example" },
+    relevantBusinessEvidence: [
+      finding({ claim: "Verified true.", sourceVerified: true }),
+      finding({ claim: "Verified false.", connectedVendorItemId: "named-enterprise-accounts", sourceVerified: false }),
+      finding({ claim: "Verification unavailable.", connectedVendorItemId: "complex-outbound-decision" }),
+    ],
+  };
+
+  const result = await runCanonicalEvaluate("acme.example", validVendor(), async () => ({
+    status: "success",
+    profileData: profile,
+  }));
+
+  const whyThemItems = result.body.evidenceBundle.filter((item) => item.decisionGroup === "whyThem");
+  assert.strictEqual(whyThemItems[0].sourceVerified, true);
+  assert.strictEqual(whyThemItems[1].sourceVerified, false);
+  assert.strictEqual("sourceVerified" in whyThemItems[2], false);
+});
+
 test("evaluate route source: production path has no fixture vendor and no legacy matcher", () => {
   const routePath = path.join(__dirname, "../../api/evaluate/route.ts");
   const apiPath = path.join(__dirname, "companyEvaluateApi.ts");

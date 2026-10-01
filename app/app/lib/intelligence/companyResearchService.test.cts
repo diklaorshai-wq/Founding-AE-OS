@@ -594,3 +594,308 @@ test("researchCompanyFromUrl: invalid vendor IDs are removed; remaining usable f
     validMockOutput.relevantBusinessEvidence[0],
   ]);
 });
+
+// --- Prompt tightening (approved evidence-quality checkpoint) ---
+//
+// These are prompt-content assertions only. They verify the instruction
+// text reaches the model; they cannot and do not assert that the model
+// will comply, since compliance is not something a mocked test can
+// observe. Live/manual verification is required for that.
+
+test("researchCompanyFromUrl: the prompt requires precise source URLs, honest unknown dates, and ISO date formatting", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(capturedPrompt, /single most precise URL that actually supports the claim/);
+  assert.match(
+    capturedPrompt,
+    /Use the bare homepage URL only when the claim is a fact genuinely stated on the homepage itself/,
+  );
+  assert.match(capturedPrompt, /never cite a URL you did not actually retrieve/);
+  assert.match(capturedPrompt, /literal string "unknown"/);
+  assert.match(capturedPrompt, /never invent, estimate, or default a date/);
+  assert.match(capturedPrompt, /ISO "YYYY-MM-DD"/);
+});
+
+test("researchCompanyFromUrl: the prompt requires substantive Why Them evidence, not generic claims", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(
+    capturedPrompt,
+    /firmographic fit, scale, complexity, workload, operating model, infrastructure or data needs/,
+  );
+  assert.match(capturedPrompt, /is not sufficient by itself/);
+});
+
+test("researchCompanyFromUrl: the prompt requires a dated, discrete Why Now trigger and forbids evergreen or restated claims", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(capturedPrompt, /recent, discrete, dated event, change, initiative, launch, investment/);
+  assert.match(
+    capturedPrompt,
+    /Do not treat evergreen strategy, general company direction, standing product capabilities, undated homepage language, or repeated boilerplate/,
+  );
+  assert.match(
+    capturedPrompt,
+    /Do not treat the same strategic point restated across different sources or time periods/,
+  );
+  assert.match(capturedPrompt, /If no valid trigger exists, return no supportive finding in "whyNowEvidence"/);
+});
+
+test("researchCompanyFromUrl: the prompt requires two-sided Why Us claims and defaults the connection label to ai_interpretation", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(capturedPrompt, /must explicitly state BOTH \(1\) the specific target-company fact/);
+  assert.match(
+    capturedPrompt,
+    /A claim describing only the target company, or only the vendor's own product, is invalid/,
+  );
+  assert.match(
+    capturedPrompt,
+    /Unless the source explicitly names the vendor or an equivalent solution, label this connection "ai_interpretation"/,
+  );
+});
+
+test("researchCompanyFromUrl: the prompt prefers fewer, stronger findings over padding every category", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(capturedPrompt, /valid and preferable to return an empty evidence array for any category/);
+  assert.match(
+    capturedPrompt,
+    /Do not fabricate evidence merely to make "relevantBusinessEvidence", "whyNowEvidence", or "whyUsEvidence" appear complete/,
+  );
+});
+
+test("researchCompanyContent (supplied-content path): shares the same tightened instructions as the live canonical URL path", async () => {
+  let capturedPrompt = "";
+  const call = async ({ prompt }: { prompt: string }) => {
+    capturedPrompt = prompt;
+    return { text: JSON.stringify(validMockOutput) };
+  };
+
+  await researchCompanyContent([websiteSource], gtmBrainVendorProfile, undefined, { call });
+
+  assert.match(capturedPrompt, /single most precise URL that actually supports the claim/);
+  assert.match(capturedPrompt, /literal string "unknown"/);
+  assert.match(capturedPrompt, /must explicitly state BOTH \(1\) the specific target-company fact/);
+});
+
+// --- URL Context retrieval metadata capture and source verification ---
+//
+// These tests cover ONLY what the runtime actually derives from SDK-
+// provided retrieval metadata: a tri-state `sourceVerified` per finding.
+// They never assert detection of claim-text semantics.
+
+test("researchCompanyFromUrl: a source confirmed retrieved (after canonical normalization) is marked sourceVerified: true", async () => {
+  const output = {
+    ...validMockOutput,
+    relevantBusinessEvidence: [
+      {
+        claim: "NovaCart's AEs prioritize accounts manually with spreadsheets.",
+        source: "https://www.novacart.example/engineering-blog/",
+        date: "2026-05-12",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+    ],
+  };
+
+  const call = async () => ({
+    text: JSON.stringify(output),
+    urlContextMetadata: [
+      {
+        retrievedUrl: "https://novacart.example/engineering-blog",
+        urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS",
+      },
+    ],
+  });
+
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.strictEqual(result.status, "success");
+  assert.strictEqual(result.profileData?.relevantBusinessEvidence[0].sourceVerified, true);
+});
+
+test("researchCompanyFromUrl: a source not among retrieved URLs is marked sourceVerified: false", async () => {
+  const output = {
+    ...validMockOutput,
+    relevantBusinessEvidence: [
+      {
+        claim: "A claim citing a page that was never actually fetched.",
+        source: "https://novacart.example/never-fetched",
+        date: "2026-05-12",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+    ],
+  };
+
+  const call = async () => ({
+    text: JSON.stringify(output),
+    urlContextMetadata: [
+      { retrievedUrl: "https://novacart.example", urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
+    ],
+  });
+
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.strictEqual(result.status, "success");
+  assert.strictEqual(result.profileData?.relevantBusinessEvidence[0].sourceVerified, false);
+});
+
+test("researchCompanyFromUrl: no retrieval metadata at all leaves sourceVerified entirely absent, not false", async () => {
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, {
+    call: mockCallReturning(validMockOutput), // returns only { text }, no urlContextMetadata
+  });
+
+  assert.strictEqual(result.status, "success");
+  const resultFinding = result.profileData?.relevantBusinessEvidence[0];
+  assert.ok(resultFinding);
+  assert.strictEqual("sourceVerified" in resultFinding, false);
+});
+
+test("researchCompanyFromUrl: source verification normalizes scheme, www, trailing slash, fragments, and known tracking parameters, without over-normalizing a genuinely different path", async () => {
+  const output = {
+    ...validMockOutput,
+    relevantBusinessEvidence: [
+      {
+        claim: "Scheme, www, and trailing-slash differences still match.",
+        source: "http://www.novacart.example/blog/",
+        date: "2026-05-12",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+      {
+        claim: "A fragment and a tracking parameter still match.",
+        source: "https://novacart.example/blog?utm_source=newsletter#section-2",
+        date: "2026-05-12",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+      {
+        claim: "A genuinely different path does not match.",
+        source: "https://novacart.example/blog/different-article",
+        date: "2026-05-12",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+    ],
+  };
+
+  const call = async () => ({
+    text: JSON.stringify(output),
+    urlContextMetadata: [
+      { retrievedUrl: "https://novacart.example/blog", urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
+    ],
+  });
+
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  const findings = result.profileData?.relevantBusinessEvidence ?? [];
+  assert.strictEqual(findings.length, 3);
+  assert.strictEqual(findings[0].sourceVerified, true, "scheme/www/trailing-slash differences must still match");
+  assert.strictEqual(findings[1].sourceVerified, true, "fragment and tracking params must be ignored for matching");
+  assert.strictEqual(findings[2].sourceVerified, false, "a genuinely different path must not be collapsed into a match");
+});
+
+test("researchCompanyFromUrl: a non-success retrieval status matching the source does not count as verified", async () => {
+  const output = {
+    ...validMockOutput,
+    relevantBusinessEvidence: [
+      {
+        claim: "The tool attempted this URL but retrieval did not succeed.",
+        source: "https://novacart.example/engineering-blog",
+        date: "2026-05-12",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+    ],
+  };
+
+  const call = async () => ({
+    text: JSON.stringify(output),
+    urlContextMetadata: [
+      {
+        retrievedUrl: "https://novacart.example/engineering-blog",
+        urlRetrievalStatus: "URL_RETRIEVAL_STATUS_UNSPECIFIED",
+      },
+    ],
+  });
+
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.strictEqual(result.profileData?.relevantBusinessEvidence[0].sourceVerified, false);
+});
+
+test("researchCompanyFromUrl: sourceVerified is computed independently per finding within the same call", async () => {
+  const output = {
+    ...validMockOutput,
+    relevantBusinessEvidence: [
+      {
+        claim: "Verified finding.",
+        source: "https://novacart.example/engineering-blog",
+        date: "2026-05-12",
+        connectedVendorItemId: "unstructured-prioritization",
+        natureOfConnection: "explicit_fact",
+        decisionImpact: "supportive",
+      },
+    ],
+    whyUsEvidence: [
+      {
+        claim: "Unverified finding, same call.",
+        source: "https://novacart.example/never-fetched",
+        date: "2026-05-12",
+        connectedVendorItemId: "spreadsheets-and-instinct",
+        natureOfConnection: "ai_interpretation",
+        decisionImpact: "supportive",
+      },
+    ],
+  };
+
+  const call = async () => ({
+    text: JSON.stringify(output),
+    urlContextMetadata: [
+      { retrievedUrl: "https://novacart.example/engineering-blog", urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
+    ],
+  });
+
+  const result = await researchCompanyFromUrl("novacart.example", gtmBrainVendorProfile, undefined, { call });
+
+  assert.strictEqual(result.profileData?.relevantBusinessEvidence[0].sourceVerified, true);
+  assert.strictEqual(result.profileData?.whyUsEvidence[0].sourceVerified, false);
+});

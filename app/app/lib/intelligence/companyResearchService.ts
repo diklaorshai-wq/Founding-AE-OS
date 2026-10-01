@@ -238,6 +238,8 @@ Evidence-array routing rules (strict):
 - Firmographic Disqualifiers and Vendor Red Flags must NEVER be connected through "whyNowEvidence", under any circumstances.
 
 For every entry in "relevantBusinessEvidence", "whyNowEvidence", and "whyUsEvidence", you MUST include ALL of these fields:
+- "source" must be the single most precise URL that actually supports the claim: a specific article, press release, product page, job posting, documentation page, investor page, or other retrieved deep URL. Use the bare homepage URL only when the claim is a fact genuinely stated on the homepage itself — never substitute the homepage for a page you did not actually retrieve, and never cite a URL you did not actually retrieve.
+- "date" must be a date directly tied to the evidence: prefer the source's stated publication date, otherwise the stated event date. Use the exact literal string "unknown" when no credible date is available — never invent, estimate, or default a date. When a complete date is known, format it as ISO "YYYY-MM-DD".
 - "connectedVendorItemId" MUST be an id copied EXACTLY from the Vendor Profile context above. Never invent a new id, and never leave a finding disconnected from the Vendor Profile.
 - "natureOfConnection" is "explicit_fact" when the claim states something a source says directly, or "ai_interpretation" when you are drawing a reasonable but non-literal conclusion from the evidence.
 - "decisionImpact" — REQUIRED on every single finding, exactly one of "supportive", "contradictory", or "neutral":
@@ -245,6 +247,12 @@ For every entry in "relevantBusinessEvidence", "whyNowEvidence", and "whyUsEvide
   - "contradictory": the finding weakens or contradicts that decision group, but is NOT itself an explicit hard vendor disqualifier (a Firmographic Disqualifier or a disqualifying Red Flag are never expressed through "decisionImpact" — they are identified only by "connectedVendorItemId").
   - "neutral": the finding provides useful context only, and does not itself strengthen or weaken the group.
   - For a finding connected to a Common Alternative specifically: classify "contradictory" for satisfied, entrenched, or committed use of that alternative; classify "supportive" for active replacement intent or documented pain with that alternative; classify "neutral" for mere use or mention with no evidence of satisfaction, commitment, pain, or replacement intent. Do NOT classify a Common Alternative connection based on its identity or vendor-provided description alone — base it only on what the sources say about the company's own relationship to that alternative.
+
+Evidence quality requirements:
+- "relevantBusinessEvidence" (Why Them) findings must prove relevant fit characteristics such as firmographic fit, scale, complexity, workload, operating model, infrastructure or data needs, or relevant teams, personas, pains, or objectives. A generic claim such as "the company uses AI" or "the company serves enterprises" is not sufficient by itself.
+- "whyNowEvidence" (Why Now) findings must describe a recent, discrete, dated event, change, initiative, launch, investment, hiring pattern, acquisition, leadership change, expansion, regulatory development, or measurable priority, and must explain why that change creates relevance now. Do not treat evergreen strategy, general company direction, standing product capabilities, undated homepage language, or repeated boilerplate as a Why Now trigger. Do not treat the same strategic point restated across different sources or time periods, in different words, as a new Why Now trigger — a valid trigger must represent a meaningful new emphasis, a measurable change, or a newly disclosed initiative. If no valid trigger exists, return no supportive finding in "whyNowEvidence" for that signal — a smaller or empty "whyNowEvidence" array is the correct result, not a fabricated trigger.
+- Every "whyUsEvidence" (Why Us) claim must explicitly state BOTH (1) the specific target-company fact, need, pain, initiative, or likely workload, AND (2) the specific vendor capability, use case, proof point, differentiation, value proposition, or relevant alternative it connects to, with the connection stated explicitly in the claim text. A claim describing only the target company, or only the vendor's own product, is invalid and must not be included. Unless the source explicitly names the vendor or an equivalent solution, label this connection "ai_interpretation", never "explicit_fact".
+- It is valid and preferable to return an empty evidence array for any category. Return fewer, stronger findings rather than filling every category with weak evidence. Do not fabricate evidence merely to make "relevantBusinessEvidence", "whyNowEvidence", or "whyUsEvidence" appear complete.
 
 Rules:
 - If the sources give no evidence for a field, return an empty array for it (or an empty string for text fields).
@@ -283,8 +291,24 @@ interface ResearchModelCallInput {
   tools?: Array<{ urlContext: Record<string, never> }>;
 }
 
+/** One entry from the Gemini SDK's own `urlContextMetadata.urlMetadata` — exactly the shape the SDK returns, re-declared locally so this file never imports SDK response types directly. */
+interface UrlMetadataEntry {
+  retrievedUrl?: string;
+  urlRetrievalStatus?: string;
+}
+
 interface ResearchModelCallResult {
   text: string | undefined;
+  /**
+   * Present only when the live Gemini URL Context tool was actually used
+   * for this call and the SDK response carried retrieval metadata.
+   * Carries exactly which URLs the tool fetched and their retrieval
+   * status, straight from `candidate.urlContextMetadata.urlMetadata` —
+   * never inferred, never fabricated. Used only to derive
+   * `CompanyEvidenceFinding.sourceVerified`; this value itself is never
+   * surfaced to callers directly.
+   */
+  urlContextMetadata?: UrlMetadataEntry[];
 }
 
 type ResearchModelCaller = (input: ResearchModelCallInput) => Promise<ResearchModelCallResult>;
@@ -303,8 +327,99 @@ function createLiveResearchModelCaller(apiKey: string, model: string): ResearchM
       },
     });
 
-    return { text: response.text };
+    return {
+      text: response.text,
+      urlContextMetadata: response.candidates?.[0]?.urlContextMetadata?.urlMetadata,
+    };
   };
+}
+
+/** Query parameters known to be tracking-only noise, stripped during canonical URL comparison. A documented allow-list, never a blanket strip of every parameter, so a genuinely resource-identifying parameter (e.g. "?docId=") is never collapsed into a false match. */
+const TRACKING_QUERY_PARAMS = new Set(["gclid", "fbclid", "mc_cid", "mc_eid", "ref"]);
+
+/**
+ * Normalizes a URL for retrieval-match comparison ONLY — the result is
+ * never displayed or stored anywhere; the original `source`/`retrievedUrl`
+ * strings are always preserved verbatim elsewhere. Returns `null` for an
+ * unparseable URL (never treated as a match). Absorbs scheme (http vs
+ * https), "www." prefix, a trailing slash, the fragment, and known
+ * tracking parameters — but deliberately preserves every other path
+ * segment and query parameter exactly, so genuinely different resources
+ * are never collapsed into the same source.
+ */
+function canonicalizeForComparison(rawUrl: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+
+  let path = parsed.pathname;
+  if (path.length > 1 && path.endsWith("/")) {
+    path = path.slice(0, -1);
+  }
+
+  const keptParams = [...parsed.searchParams.entries()]
+    .filter(([key]) => !key.startsWith("utm_") && !TRACKING_QUERY_PARAMS.has(key))
+    .sort(([a], [b]) => a.localeCompare(b));
+  const query = keptParams.length > 0 ? "?" + keptParams.map(([k, v]) => `${k}=${v}`).join("&") : "";
+
+  return `${host}${path}${query}`;
+}
+
+/**
+ * Tri-state source verification against the Gemini URL Context tool's own
+ * retrieval metadata for this research call:
+ * - `true`: a successfully retrieved URL canonically matches `sourceUrl`.
+ * - `false`: `urlMetadata` was present (the tool was invoked this call)
+ *   but no successfully retrieved URL canonically matches `sourceUrl` —
+ *   covers both "nothing matches" and "matched but retrieval failed", and
+ *   an unparseable `sourceUrl`.
+ * - `undefined`: `urlMetadata` is absent or empty; verification could not
+ *   be attempted at all. This is never evidence that the source is bad.
+ * This proves only that a URL was (or was not) actually fetched by the
+ * tool — never a judgment of source precision, relevance, or quality.
+ */
+function verifySource(
+  sourceUrl: string,
+  urlMetadata: UrlMetadataEntry[] | undefined,
+): boolean | undefined {
+  if (!urlMetadata || urlMetadata.length === 0) {
+    return undefined;
+  }
+
+  const normalizedSource = canonicalizeForComparison(sourceUrl);
+  if (normalizedSource === null) {
+    return false;
+  }
+
+  return urlMetadata.some(
+    (entry) =>
+      entry.urlRetrievalStatus === "URL_RETRIEVAL_STATUS_SUCCESS" &&
+      entry.retrievedUrl !== undefined &&
+      canonicalizeForComparison(entry.retrievedUrl) === normalizedSource,
+  );
+}
+
+/**
+ * Attaches `sourceVerified` only when verification was actually
+ * determinable. When verification is `undefined` (metadata unavailable),
+ * returns the SAME finding object unchanged — no key is added, even as
+ * `undefined` — so profiles built without retrieval metadata (e.g. every
+ * existing supplied-content test) remain byte-for-byte identical to the
+ * pre-verification shape.
+ */
+function withSourceVerification(
+  finding: CompanyEvidenceFinding,
+  verification: boolean | undefined,
+): CompanyEvidenceFinding {
+  if (verification === undefined) {
+    return finding;
+  }
+  return { ...finding, sourceVerified: verification };
 }
 
 /**
@@ -365,31 +480,39 @@ function parseResearchOutput(rawText: string | undefined): ResolvedCompanyResear
   };
 }
 
+/** Return shape of `resolveResearchOutput`: the parsed output alongside whatever retrieval metadata the same model call carried (if any). */
+interface ResolvedResearchCall {
+  output: ResolvedCompanyResearchOutput | null;
+  urlMetadata: UrlMetadataEntry[] | undefined;
+}
+
 /**
  * Resolves the AI-extracted fields, or `null` on any failure (unimplemented
  * provider, missing API key, network error, malformed JSON, shell schema
  * violation). Never throws. A malformed *individual* finding does not
  * cause `null` here — it is dropped inside `parseResearchOutput` while the
- * rest of the result is preserved.
+ * rest of the result is preserved. Also returns the same call's retrieval
+ * metadata (`urlMetadata`), which is `undefined` for the supplied-content
+ * path since no URL Context tool is ever bound to that call.
  */
 async function resolveResearchOutput(
   sources: ResearchSource[],
   vendor: VendorProfile,
   provider: ResearchProvider,
   call: ResearchModelCaller | undefined,
-): Promise<ResolvedCompanyResearchOutput | null> {
+): Promise<ResolvedResearchCall> {
   if (provider !== "gemini") {
     // Only Gemini is wired in today. Other providers are accepted by the
     // public `ResearchOptions` type but degrade to the empty stub in
     // `researchCompanyContent` until they're implemented.
-    return null;
+    return { output: null, urlMetadata: undefined };
   }
 
   let caller = call;
   if (!caller) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return null;
+      return { output: null, urlMetadata: undefined };
     }
     caller = createLiveResearchModelCaller(
       apiKey,
@@ -398,13 +521,13 @@ async function resolveResearchOutput(
   }
 
   try {
-    const { text } = await caller({
+    const { text, urlContextMetadata } = await caller({
       prompt: buildCompanyResearchPrompt(sources, vendor),
       responseJsonSchema: RESEARCH_RESPONSE_JSON_SCHEMA,
     });
-    return parseResearchOutput(text);
+    return { output: parseResearchOutput(text), urlMetadata: urlContextMetadata };
   } catch {
-    return null;
+    return { output: null, urlMetadata: undefined };
   }
 }
 
@@ -413,17 +536,29 @@ function sanitizeEvidence(findings: CompanyEvidenceFinding[], validVendorItemIds
   return findings.filter((finding) => validVendorItemIds.has(finding.connectedVendorItemId));
 }
 
+/** Sanitizes a finding array against valid Vendor Profile ids, then attaches `sourceVerified` to each surviving finding per the same call's retrieval metadata (a no-op when that metadata is unavailable). */
+function sanitizeAndVerifyEvidence(
+  findings: CompanyEvidenceFinding[],
+  validVendorItemIds: Set<string>,
+  urlMetadata: UrlMetadataEntry[] | undefined,
+): CompanyEvidenceFinding[] {
+  return sanitizeEvidence(findings, validVendorItemIds).map((finding) =>
+    withSourceVerification(finding, verifySource(finding.source, urlMetadata)),
+  );
+}
+
 function toSanitizedCompanyProfile(
   extracted: ResolvedCompanyResearchOutput,
   vendorProfile: VendorProfile,
+  urlMetadata?: UrlMetadataEntry[],
 ): CompanyProfile {
   const validVendorItemIds = collectAllVendorItemIds(vendorProfile);
   return {
     companyIdentity: extracted.companyIdentity,
     companyCharacteristics: extracted.companyCharacteristics,
-    relevantBusinessEvidence: sanitizeEvidence(extracted.relevantBusinessEvidence, validVendorItemIds),
-    whyNowEvidence: sanitizeEvidence(extracted.whyNowEvidence, validVendorItemIds),
-    whyUsEvidence: sanitizeEvidence(extracted.whyUsEvidence, validVendorItemIds),
+    relevantBusinessEvidence: sanitizeAndVerifyEvidence(extracted.relevantBusinessEvidence, validVendorItemIds, urlMetadata),
+    whyNowEvidence: sanitizeAndVerifyEvidence(extracted.whyNowEvidence, validVendorItemIds, urlMetadata),
+    whyUsEvidence: sanitizeAndVerifyEvidence(extracted.whyUsEvidence, validVendorItemIds, urlMetadata),
     relevantRoles: extracted.relevantRoles,
     redFlags: extracted.redFlags,
   };
@@ -480,12 +615,12 @@ export async function researchCompanyContent(
   const provider = options?.provider ?? DEFAULT_PROVIDER;
   const emptyProfile = createEmptyCompanyProfile();
 
-  const extracted = await resolveResearchOutput(sources, vendorProfile, provider, overrides?.call);
+  const { output: extracted, urlMetadata } = await resolveResearchOutput(sources, vendorProfile, provider, overrides?.call);
   if (!extracted) {
     return emptyProfile;
   }
 
-  return toSanitizedCompanyProfile(extracted, vendorProfile);
+  return toSanitizedCompanyProfile(extracted, vendorProfile, urlMetadata);
 }
 
 /**
@@ -531,6 +666,7 @@ export async function researchCompanyFromUrl(
   }
 
   let text: string | undefined;
+  let urlContextMetadata: UrlMetadataEntry[] | undefined;
   try {
     const result = await caller({
       prompt: buildCompanyResearchFromUrlPrompt(domain, vendorProfile),
@@ -538,6 +674,7 @@ export async function researchCompanyFromUrl(
       tools: [{ urlContext: {} }],
     });
     text = result.text;
+    urlContextMetadata = result.urlContextMetadata;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return failedResearch(`Gemini research request failed: ${message}`);
@@ -552,7 +689,7 @@ export async function researchCompanyFromUrl(
     return failedResearch("Gemini's response was not valid JSON or did not match the expected top-level schema.");
   }
 
-  const profileData = toSanitizedCompanyProfile(extracted, vendorProfile);
+  const profileData = toSanitizedCompanyProfile(extracted, vendorProfile, urlContextMetadata);
 
   if (!hasUsableVendorLinkedEvidence(profileData)) {
     return {

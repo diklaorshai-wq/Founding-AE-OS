@@ -90,6 +90,13 @@ export const DecisionEvidenceItemSchema = z.object({
   connectedVendorItemId: z.string(),
   natureOfConnection: z.enum(["explicit_fact", "ai_interpretation"]),
   decisionImpact: z.enum(["supportive", "contradictory", "neutral"]),
+  /**
+   * System-derived, optional. Never produced by Gemini — derived from
+   * Gemini URL Context retrieval metadata in `companyResearchService.ts`
+   * and carried through verbatim for UI transparency. Absent when
+   * verification could not be attempted (not the same as `false`).
+   */
+  sourceVerified: z.boolean().optional(),
 });
 export type DecisionEvidenceItem = z.infer<typeof DecisionEvidenceItemSchema>;
 

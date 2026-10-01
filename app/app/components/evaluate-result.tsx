@@ -15,6 +15,35 @@ const GROUP_LABELS = {
   whyUs: "Why Us",
 } as const;
 
+/** Whether a source URL is displayable as a clickable link (parseable, http/https only). */
+function isDisplayableSourceUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a source URL is the bare homepage (no path, query, or fragment beyond "/") — surfaced so an AE can see at a glance that a citation is domain-level, not page-level. */
+function isBareHomepageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (parsed.pathname === "" || parsed.pathname === "/") && !parsed.search && !parsed.hash;
+  } catch {
+    return false;
+  }
+}
+
+/** A date is displayed honestly as "unknown" when empty or the literal (case-insensitive) string "unknown" — never silently blank. */
+function formatEvidenceDate(date: string): string {
+  const trimmed = date.trim();
+  if (trimmed.length === 0 || trimmed.toLowerCase() === "unknown") {
+    return "Date: unknown";
+  }
+  return trimmed;
+}
+
 export function EvaluateResult({
   response,
   targetLabel,
@@ -95,11 +124,28 @@ export function EvaluateResult({
                       >
                         <p>{item.claim}</p>
                         <p className="mt-1 text-xs text-zinc-500">
-                          {item.decisionImpact}
-                          {item.natureOfConnection ? ` · ${item.natureOfConnection}` : ""}
-                          {item.source ? ` · ${item.source}` : ""}
-                          {item.date ? ` · ${item.date}` : ""}
+                          {item.decisionImpact} · {item.natureOfConnection} · {formatEvidenceDate(item.date)}
+                          {item.sourceVerified === false ? (
+                            <span className="ml-1 text-amber-600">(source not confirmed retrieved)</span>
+                          ) : null}
                         </p>
+                        {item.source ? (
+                          <p className="mt-0.5 text-xs text-zinc-500">
+                            {isDisplayableSourceUrl(item.source) ? (
+                              <a
+                                href={item.source}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline hover:text-zinc-700"
+                              >
+                                {item.source}
+                              </a>
+                            ) : (
+                              item.source
+                            )}
+                            {isBareHomepageUrl(item.source) ? " (homepage)" : ""}
+                          </p>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

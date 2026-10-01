@@ -56,6 +56,9 @@ export function buildDecisionEvidenceBundle(profile: CompanyProfile): DecisionEv
       connectedVendorItemId: finding.connectedVendorItemId,
       natureOfConnection: finding.natureOfConnection,
       decisionImpact: finding.decisionImpact,
+      // System-derived, carried through only when it was actually
+      // determined (never Gemini-produced) — see CompanyEvidenceFinding.
+      ...(finding.sourceVerified !== undefined ? { sourceVerified: finding.sourceVerified } : {}),
     })),
     ...profile.whyNowEvidence.map((finding) => ({
       decisionGroup: "whyNow" as const,
@@ -65,6 +68,7 @@ export function buildDecisionEvidenceBundle(profile: CompanyProfile): DecisionEv
       connectedVendorItemId: finding.connectedVendorItemId,
       natureOfConnection: finding.natureOfConnection,
       decisionImpact: finding.decisionImpact,
+      ...(finding.sourceVerified !== undefined ? { sourceVerified: finding.sourceVerified } : {}),
     })),
     ...profile.whyUsEvidence.map((finding) => ({
       decisionGroup: "whyUs" as const,
@@ -74,6 +78,7 @@ export function buildDecisionEvidenceBundle(profile: CompanyProfile): DecisionEv
       connectedVendorItemId: finding.connectedVendorItemId,
       natureOfConnection: finding.natureOfConnection,
       decisionImpact: finding.decisionImpact,
+      ...(finding.sourceVerified !== undefined ? { sourceVerified: finding.sourceVerified } : {}),
     })),
   ];
 }

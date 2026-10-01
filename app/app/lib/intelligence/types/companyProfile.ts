@@ -66,6 +66,25 @@ export interface CompanyEvidenceFinding {
   connectedVendorItemId: string;
   natureOfConnection: NatureOfConnection;
   decisionImpact: DecisionImpact;
+  /**
+   * System-derived, optional. Never produced or requested from Gemini —
+   * computed in `companyResearchService.ts` by cross-referencing this
+   * finding's `source` against the Gemini URL Context tool's own
+   * retrieval metadata (`candidate.urlContextMetadata.urlMetadata`) for
+   * the research call that produced it. Tri-state, represented as an
+   * optional boolean (the key is omitted entirely, not set to
+   * `undefined`, when verification could not be attempted):
+   * - `true`: a successfully retrieved URL canonically matches `source`.
+   * - `false`: retrieval metadata was present but no successfully
+   *   retrieved URL canonically matches `source`.
+   * - absent (key not present): no retrieval metadata was available at
+   *   all for this research call, so verification could not be
+   *   attempted — this is never evidence that the source is bad.
+   * This proves only that the cited URL was (or was not) among what the
+   * tool actually fetched — it is not a judgment of source precision,
+   * relevance, or quality.
+   */
+  sourceVerified?: boolean;
 }
 
 export interface CompanyProfile {

@@ -162,6 +162,62 @@ function isHardDisqualifierEntry(entry: VendorItemLookupEntry, group: DecisionGr
   return false;
 }
 
+/**
+ * Whether a finding's source is usable at all: non-empty, and not
+ * confirmed as unretrieved. `sourceVerified === false` means the Gemini
+ * URL Context tool's own retrieval metadata was present and explicitly did
+ * not confirm this source — that disqualifies it. `true` and `undefined`
+ * (verification unavailable) both pass; absence of verification metadata
+ * is never treated as evidence against a finding.
+ */
+function hasUsableVerifiedSource(finding: CompanyEvidenceFinding): boolean {
+  if (finding.source.trim().length === 0) {
+    return false;
+  }
+  return finding.sourceVerified !== false;
+}
+
+/** Whether a finding's `date` is a real, known date — non-empty and not the literal (case-insensitive) string "unknown". */
+function hasKnownDate(finding: CompanyEvidenceFinding): boolean {
+  const date = finding.date.trim().toLowerCase();
+  return date.length > 0 && date !== "unknown";
+}
+
+/**
+ * Group-specific admissibility for a "supportive" finding to be allowed to
+ * contribute toward a gate "pass" (per the approved evidence-quality
+ * checkpoint):
+ * - Why Them: a usable, non-unverified source only. A known date is useful
+ *   but never mandatory — stable firmographic, scale, workload, or
+ *   operating-model facts are not inherently time-bound.
+ * - Why Now: a usable, non-unverified source AND a known, non-"unknown"
+ *   date. A missing or unknown date must prevent this finding from
+ *   creating a Why Now pass, since an undated claim cannot establish
+ *   recency or urgency.
+ * - Why Us: a usable, non-unverified source only, same as Why Them — the
+ *   `connectedVendorItemId` -> allowed-collection check already happened
+ *   in `isFindingApplicableToGroup`. A known date is not mandatory here
+ *   either, unless a specific claim's own recency is what it depends on —
+ *   that distinction is semantic and is deliberately NOT evaluated here.
+ *
+ * This function only inspects `source`, `date`, and `sourceVerified` — it
+ * never inspects `claim` text. It therefore cannot detect (and must never
+ * be relied upon to detect) a target-only Why Us claim, an evergreen
+ * statement misrepresented as a Why Now trigger, or any other semantic
+ * weakness. Those remain enforced only through the research prompt and are
+ * visible for human review in the result UI, never structurally enforced
+ * in V1.
+ */
+function isAdmissibleSupportiveFinding(finding: CompanyEvidenceFinding, group: DecisionGroup): boolean {
+  if (!hasUsableVerifiedSource(finding)) {
+    return false;
+  }
+  if (group === "whyNow") {
+    return hasKnownDate(finding);
+  }
+  return true;
+}
+
 interface GroupClassification {
   /** Every finding applicable to this group, in original input order. */
   applicableFindings: CompanyEvidenceFinding[];
@@ -193,8 +249,17 @@ function classifyFindingsForGroup(
       classification.hasHardDisqualifier = true;
     }
     if (finding.decisionImpact === "supportive") {
-      classification.hasSupportive = true;
+      // Admissibility gates only whether this finding can CAUSE a pass; an
+      // inadmissible supportive finding still remains in
+      // `applicableFindings` (still shown as evidence) and never flips to
+      // "contradictory" — it simply cannot carry the group on its own.
+      if (isAdmissibleSupportiveFinding(finding, group)) {
+        classification.hasSupportive = true;
+      }
     } else if (finding.decisionImpact === "contradictory") {
+      // Contradictory findings are never admissibility-gated: allowing
+      // weak negative evidence to push a group toward "unknown" is the
+      // conservative, honest direction and needs no guardrail.
       classification.hasContradictory = true;
     }
     // "neutral" findings never influence status.
